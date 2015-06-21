@@ -30,6 +30,6 @@ def list_files_with_extension(directory, extension):
     :return: The list of matching files.
     """
     tmp = os.listdir(directory)
-    files = [f for f in tmp if os.path.isfile(f)]
-    extens = [f for f in files if os.path.splitext(f)[1] == "."+extension]
-    return extens
+    logging.debug(tmp)
+    extens = [f for f in tmp if os.path.splitext(f)[1] == "."+extension]
+    return [os.path.join(directory, f) for f in extens]
