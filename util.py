@@ -21,3 +21,15 @@ def download_file(url, outpath):
     r = requests.get(url)
     with open(outpath, 'w') as fout:
         fout.write(r.content)
+
+def list_files_with_extension(directory, extension):
+    """
+    Return a list of files with a given extension.
+    :param directory: The directory to explore.
+    :param extension: The extension to filter on.
+    :return: The list of matching files.
+    """
+    tmp = os.listdir(directory)
+    files = [f for f in tmp if os.path.isfile(f)]
+    extens = [f for f in files if os.path.splitext(f)[1] == "."+extension]
+    return extens
