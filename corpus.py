@@ -98,11 +98,11 @@ def process_tweebo():
     d547 = interpret_conll("Data/TweeboDaily547.conll")
     o24 = interpret_conll("Data/TweeboOct27.conll")
 
-    with open('Data/TweeboDaily547.npy', 'w') as fout:
+    with open('Data/TweeboDaily547.pkl', 'w') as fout:
         logging.info("Saving daily...")
         pickle.dump(d547, fout, pickle.HIGHEST_PROTOCOL)
 
-    with open('Data/TweeboOct27.npy', 'w') as fout:
+    with open('Data/TweeboOct27.pkl', 'w') as fout:
         logging.info("Saving Oct...")
         pickle.dump(o24, fout, pickle.HIGHEST_PROTOCOL)
 
