@@ -468,6 +468,8 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
         for line in fin:
             line = line.strip()
             if len(line) == 0:
+                cur_words.append(0)
+                cur_labels.append(0)
                 words.append(cur_words)
                 labels.append(cur_labels)
                 cur_words = []
