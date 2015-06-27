@@ -17,6 +17,9 @@ def prepare_data(seqs, labels, maxlen=None):
 
     This swap the axis!
     """
+
+    import pprint
+
     # x: a list of sentences
     lengths = [len(s) for s in seqs]
 
@@ -41,11 +44,13 @@ def prepare_data(seqs, labels, maxlen=None):
 
     x = numpy.zeros((maxlen, n_samples)).astype('int64')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
-    for idx, s in enumerate(seqs):
+    y = numpy.zeros((maxlen, n_samples)).astype('int64')
+    for idx, (s, l) in enumerate(zip(seqs, labels)):
         x[:lengths[idx], idx] = s
+        y[:lengths[idx], idx] = l
         x_mask[:lengths[idx], idx] = 1.
 
-    return x, x_mask, labels
+    return x, x_mask, y
 
 
 def get_dataset_file(dataset, default_dataset, origin):

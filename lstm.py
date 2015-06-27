@@ -368,8 +368,11 @@ def build_model(tparams, options):
     use_noise = theano.shared(numpy_floatX(0.))
 
     x = tensor.matrix('x', dtype='int64')
+    x.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
-    y = tensor.vector('y', dtype='int64')
+    mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    y = tensor.matrix('y', dtype='int64')
+    y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
 
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
@@ -380,23 +383,33 @@ def build_model(tparams, options):
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix=options['encoder'],
                                             mask=mask)
-    if options['encoder'] == 'lstm':
+    #if options['encoder'] == 'lstm':
         # Mean pooling
-        proj = (proj * mask[:, :, None]).sum(axis=0)
-        proj = proj / mask.sum(axis=0)[:, None]
-    if options['use_dropout']:
-        proj = dropout_layer(proj, use_noise, trng)
+    #    proj = (proj * mask[:, :, None]).sum(axis=0)
+    #    proj = proj / mask.sum(axis=0)[:, None]
+    #if options['use_dropout']:
+    #    proj = dropout_layer(proj, use_noise, trng)
 
-    pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
+    #proj = proj * mask[:, :, None]
+    pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
+                          outputs_info=None,
+                          sequences=[proj, theano.tensor.arange(140)]
+                          )
 
+    #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
+
+    #pred = theano.printing.Print("PRED")(pred)
     f_pred_prob = theano.function([x, mask], pred, name='f_pred_prob')
-    f_pred = theano.function([x, mask], pred.argmax(axis=1), name='f_pred')
+    f_pred = theano.function([x, mask], pred.argmax(axis=2), name='f_pred')
 
     off = 1e-8
     if pred.dtype == 'float16':
         off = 1e-6
 
-    cost = -tensor.log(pred[tensor.arange(n_samples), y] + off).mean()
+    cost, _ = theano.scan(fn=lambda i, j, free_variable: -tensor.log(i[tensor.arange(n_samples), j] + 1e-8),
+                       outputs_info=None,
+                       sequences=[pred, y, tensor.arange(n_samples)])
+    cost = cost.mean()
 
     return use_noise, x, mask, y, f_pred_prob, f_pred, cost
 
@@ -413,8 +426,11 @@ def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False):
     for _, valid_index in iterator:
         x, mask, y = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
-                                  maxlen=None)
+                                  maxlen=140)
         pred_probs = f_pred_prob(x, mask)
+        #import pprint
+        #pprint.pprint(pred_probs)
+        #print pred_probs.shape, x.shape
         probs[valid_index, :] = pred_probs
 
         n_done += len(valid_index)
@@ -430,37 +446,41 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
     f_pred: Theano fct computing the prediction
     prepare_data: usual prepare_data for that dataset.
     """
-    valid_err = 0
+    valid_err = []
+    valid_shapes = []
     for _, valid_index in iterator:
         x, mask, y = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
-                                  maxlen=None)
+                                  maxlen=140)
         preds = f_pred(x, mask)
-        targets = numpy.array(data[1])[valid_index]
-        valid_err += (preds == targets).sum()
-    valid_err = 1. - numpy_floatX(valid_err) / len(data[0])
+        valid_err.append((preds == y).sum())
+        valid_shapes.append(x.shape[0] * x.shape[1])
+
+    valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()
 
     return valid_err
 
 
 def load_pos_tagged_data(path, chardict = {}, posdict={}):
-    cur = []
+    cur_words, cur_labels = [], []
     words, labels = [], []
     with open(path, 'r') as fin:
         for line in fin:
             line = line.strip()
             if len(line) == 0:
+                words.append(cur_words)
+                labels.append(cur_labels)
+                cur_words = []
+                cur_labels = []
                 continue
             word, pos = line.split('\t')
             for c in word:
                 if c not in chardict:
                     chardict[c] = len(chardict)+1
-                cur.append(chardict[c])
-            if pos not in posdict:
-                posdict[pos] = len(posdict)+1
-            words.append(cur)
-            labels.append(posdict[pos])
-            cur = []
+                cur_words.append(chardict[c])
+                if pos not in posdict:
+                    posdict[pos] = len(posdict)+1
+                cur_labels.append(posdict[pos])
     print len(words), len(labels)
     return words, labels
 
@@ -534,7 +554,8 @@ def train_lstm(
     #    idx = idx[:test_size]
     #    test = ([test[0][n] for n in idx], [test[1][n] for n in idx])
 
-    ydim = numpy.max(train[1]) + 1
+    print numpy.max(train[1], axis=None)
+    ydim = numpy.max(numpy.amax(train[1])) + 1
 
     model_options['ydim'] = ydim
 
@@ -613,6 +634,8 @@ def train_lstm(
                 x, mask, y = prepare_data(x, y)
                 n_samples += x.shape[1]
 
+
+                #print y
                 cost = f_grad_shared(x, mask, y)
                 f_update(lrate)
 
@@ -678,9 +701,12 @@ def train_lstm(
 
     use_noise.set_value(0.)
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
+    #pred_probs(f_pred_prob, prepare_data, test, kf_test)
+    #sys.exit(1)
     train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted)
     valid_err = pred_error(f_pred, prepare_data, valid, kf_valid)
     test_err = pred_error(f_pred, prepare_data, test, kf_test)
+
 
     print 'Train ', train_err, 'Valid ', valid_err, 'Test ', test_err
     if saveto:
