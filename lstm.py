@@ -443,6 +443,41 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
     return valid_err
 
 
+def load_pos_tagged_data(path, chardict = {}, posdict={}):
+    cur = []
+    words, labels = [], []
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            word, pos = line.split('\t')
+            for c in word:
+                if c not in chardict:
+                    chardict[c] = len(chardict)+1
+                cur.append(chardict[c])
+            if pos not in posdict:
+                posdict[pos] = len(posdict)+1
+            words.append(cur)
+            labels.append(posdict[pos])
+            cur = []
+    print len(words), len(labels)
+    return words, labels
+
+def split_at(src, prop):
+    src_words, src_labels = [], []
+    val_words, val_labels = [], []
+    fin = max(int(prop * len(src[0])), 1)
+    print len(src[0]), prop, fin
+    for i, (l, p) in enumerate(zip(src[0], src[1])):
+        if i < fin:
+            val_words.append(l)
+            val_labels.append(p)
+        else:
+            src_words.append(l)
+            src_labels.append(p)
+    return (src_words, src_labels), (val_words, val_labels)
+
 def train_lstm(
     dim_proj=128,  # word embeding dimension and LSTM number of hidden units.
     patience=10,  # Number of epoch to wait before early stop if no progress
@@ -475,19 +510,29 @@ def train_lstm(
 
     load_data, prepare_data = get_dataset(dataset)
 
+    # Load the training data
     print 'Loading data'
-    train, valid, test = load_data(n_words=n_words, valid_portion=0.05,
-                                   maxlen=maxlen)
+    #train, valid, test = load_data(n_words=n_words, valid_portion=0.05,
+    #                               maxlen=maxlen)
+    char_dict = {}
+    pos_dict = {}
+    train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, pos_dict)
+    train, valid = split_at(train, 0.05)
+    import pprint
+    pprint.pprint(len(valid[0]))
+    print len(train[0])
+    test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, pos_dict)
 
-    print train
-    if test_size > 0:
+    print len(test[0])
+
+    #if test_size > 0:
         # The test set is sorted by size, but we want to keep random
         # size example.  So we must select a random selection of the
         # examples.
-        idx = numpy.arange(len(test[0]))
-        numpy.random.shuffle(idx)
-        idx = idx[:test_size]
-        test = ([test[0][n] for n in idx], [test[1][n] for n in idx])
+    #    idx = numpy.arange(len(test[0]))
+    #    numpy.random.shuffle(idx)
+    #    idx = idx[:test_size]
+    #    test = ([test[0][n] for n in idx], [test[1][n] for n in idx])
 
     ydim = numpy.max(train[1]) + 1
 
@@ -605,8 +650,8 @@ def train_lstm(
                         best_p = unzip(tparams)
                         bad_counter = 0
 
-                    print ('Train ', train_err, 'Valid ', valid_err,
-                           'Test ', test_err)
+                    print ('Train ', 100*(1-train_err), 'Valid ', 100*(1-valid_err),
+                           'Test ', 100*(1-test_err))
 
                     if (len(history_errs) > patience and
                         valid_err >= numpy.array(history_errs)[:-patience,
