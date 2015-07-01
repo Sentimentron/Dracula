@@ -468,14 +468,13 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
         for line in fin:
             line = line.strip()
             if len(line) == 0:
-                cur_words.append(0)
-                cur_labels.append(0)
                 words.append(cur_words)
                 labels.append(cur_labels)
                 cur_words = []
                 cur_labels = []
                 continue
             word, pos = line.split('\t')
+            cur_word = []
             for c in word:
                 if c not in chardict:
                     chardict[c] = len(chardict)+1
@@ -483,6 +482,8 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
                 if pos not in posdict:
                     posdict[pos] = len(posdict)+1
                 cur_labels.append(posdict[pos])
+            cur_words.append(0)
+            cur_labels.append(0)
     print len(words), len(labels)
     return words, labels
 
