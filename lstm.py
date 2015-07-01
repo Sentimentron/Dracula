@@ -424,7 +424,7 @@ def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False):
     n_done = 0
 
     for _, valid_index in iterator:
-        x, mask, y = prepare_data([data[0][t] for t in valid_index],
+        x, mask, wmask, y = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
         pred_probs = f_pred_prob(x, mask)
@@ -449,7 +449,7 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
     valid_err = []
     valid_shapes = []
     for _, valid_index in iterator:
-        x, mask, y = prepare_data([data[0][t] for t in valid_index],
+        x, mask, wmask, y = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
         preds = f_pred(x, mask)
@@ -474,7 +474,6 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
                 cur_labels = []
                 continue
             word, pos = line.split('\t')
-            cur_word = []
             for c in word:
                 if c not in chardict:
                     chardict[c] = len(chardict)+1
@@ -634,7 +633,7 @@ def train_lstm(
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
-                x, mask, y = prepare_data(x, y)
+                x, mask, wmask, y = prepare_data(x, y)
                 n_samples += x.shape[1]
 
 

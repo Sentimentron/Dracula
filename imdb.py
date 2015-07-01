@@ -5,6 +5,7 @@ import os
 import numpy
 import theano
 
+import itertools
 
 def prepare_data(seqs, labels, maxlen=None):
     """Create the matrices from the datasets.
@@ -44,13 +45,19 @@ def prepare_data(seqs, labels, maxlen=None):
 
     x = numpy.zeros((maxlen, n_samples)).astype('int64')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
+    words_mask = numpy.zeros((maxlen, n_samples, 80)).astype(theano.config.floatX)
     y = numpy.zeros((maxlen, n_samples)).astype('int64')
     for idx, (s, l) in enumerate(zip(seqs, labels)):
         x[:lengths[idx], idx] = s
         y[:lengths[idx], idx] = l
         x_mask[:lengths[idx], idx] = 1.
+        c = 0
+        for j, s in enumerate(seqs):
+            words_mask[j, idx, c] = 1.
+            if s == 0:
+                c += 1
 
-    return x, x_mask, y
+    return x, x_mask, words_mask, y
 
 
 def get_dataset_file(dataset, default_dataset, origin):
