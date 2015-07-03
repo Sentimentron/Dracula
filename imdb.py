@@ -45,6 +45,7 @@ def prepare_data(seqs, labels, maxlen=None):
 
     x = numpy.zeros((maxlen, n_samples)).astype('int64')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
+    #words_mask = numpy.zeros((maxlen, 80, n_samples)).astype(theano.config.floatX)
     words_mask = numpy.zeros((maxlen, n_samples, 80)).astype(theano.config.floatX)
     y = numpy.zeros((maxlen, n_samples)).astype('int64')
     for idx, (s, l) in enumerate(zip(seqs, labels)):

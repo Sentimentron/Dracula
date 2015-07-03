@@ -207,7 +207,7 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None):
 layers = {'lstm': (param_init_lstm, lstm_layer)}
 
 
-def sgd(lr, tparams, grads, x, mask, y, cost):
+def sgd(lr, tparams, grads, x, mask, wmask, y, cost):
     """ Stochastic Gradient Descent
 
     :note: A more complicated version of sgd then needed.  This is
@@ -222,7 +222,7 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
 
     # Function that computes gradients for a mini-batch, but do not
     # updates the weights.
-    f_grad_shared = theano.function([x, mask, y], cost, updates=gsup,
+    f_grad_shared = theano.function([x, mask, wmask, y], cost, updates=gsup,
                                     name='sgd_f_grad_shared')
 
     pup = [(p, p - lr * g) for p, g in zip(tparams.values(), gshared)]
@@ -235,7 +235,7 @@ def sgd(lr, tparams, grads, x, mask, y, cost):
     return f_grad_shared, f_update
 
 
-def adadelta(lr, tparams, grads, x, mask, y, cost):
+def adadelta(lr, tparams, grads, x, mask, wmask, y, cost):
     """
     An adaptive learning rate optimizer
 
@@ -278,8 +278,8 @@ def adadelta(lr, tparams, grads, x, mask, y, cost):
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
              for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function([x, mask, y], cost, updates=zgup + rg2up,
-                                    name='adadelta_f_grad_shared')
+    f_grad_shared = theano.function([x, mask, wmask, y], cost, updates=zgup + rg2up,
+                                    name='adadelta_f_grad_shared', on_unused_input='warn')
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
              for zg, ru2, rg2 in zip(zipped_grads,
@@ -296,7 +296,7 @@ def adadelta(lr, tparams, grads, x, mask, y, cost):
     return f_grad_shared, f_update
 
 
-def rmsprop(lr, tparams, grads, x, mask, y, cost):
+def rmsprop(lr, tparams, grads, x, mask, wmask, y, cost):
     """
     A variant of  SGD that scales the step size by running average of the
     recent step norms.
@@ -342,7 +342,7 @@ def rmsprop(lr, tparams, grads, x, mask, y, cost):
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
              for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function([x, mask, y], cost,
+    f_grad_shared = theano.function([x, mask, wmask, y], cost,
                                     updates=zgup + rgup + rg2up,
                                     name='rmsprop_f_grad_shared')
 
@@ -371,6 +371,7 @@ def build_model(tparams, options):
     x.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
     mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    wmask = tensor.tensor3('wmask', dtype=config.floatX)
     y = tensor.matrix('y', dtype='int64')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
 
@@ -390,6 +391,25 @@ def build_model(tparams, options):
     #if options['use_dropout']:
     #    proj = dropout_layer(proj, use_noise, trng)
 
+    # Mean pooling
+    proj = proj * mask[:, :, None] # Remove any extraneous predictions
+    # >>> numpy.einsum('iac,bid->aid',mask,proj).shape
+    #  (142, 16, 128)
+
+    proj = wmask * proj
+
+    #proj = wmask * theano.tensor.arange(n_timesteps).reshape((n_timesteps, 1))
+
+    #proj = theano.tensor.tensordot(wmask, proj, axes=[])
+    #proj = proj.sum(axis=2)
+    #proj = proj / wmask.sum(axis=2)
+
+    #proj, _ = theano.scan(fn=lambda i, m, e, free_variable: m[:,i,:] * e[:,i,:],
+    #                      outputs_info=None,
+    #                      non_sequences=[wmask, proj],
+    #                      n_steps=proj.shape[1]
+ #                         )
+#
     #proj = proj * mask[:, :, None]
     pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
@@ -399,8 +419,8 @@ def build_model(tparams, options):
     #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
 
     #pred = theano.printing.Print("PRED")(pred)
-    f_pred_prob = theano.function([x, mask], pred, name='f_pred_prob')
-    f_pred = theano.function([x, mask], pred.argmax(axis=2), name='f_pred')
+    f_pred_prob = theano.function([x, mask, wmask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([x, mask, wmask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     off = 1e-8
     if pred.dtype == 'float16':
@@ -411,7 +431,7 @@ def build_model(tparams, options):
                        sequences=[pred, y, tensor.arange(n_samples)])
     cost = cost.mean()
 
-    return use_noise, x, mask, y, f_pred_prob, f_pred, cost
+    return use_noise, x, mask, wmask, y, f_pred_prob, f_pred, cost
 
 
 def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False):
@@ -427,7 +447,7 @@ def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False):
         x, mask, wmask, y = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
-        pred_probs = f_pred_prob(x, mask)
+        pred_probs = f_pred_prob(x, mask, wmask)
         #import pprint
         #pprint.pprint(pred_probs)
         #print pred_probs.shape, x.shape
@@ -452,7 +472,7 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
         x, mask, wmask, y = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
-        preds = f_pred(x, mask)
+        preds = f_pred(x, mask, wmask)
         valid_err.append((preds == y).sum())
         valid_shapes.append(x.shape[0] * x.shape[1])
 
@@ -575,7 +595,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (use_noise, x, mask,
+    (use_noise, x, mask, wmask,
      y, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
 
     if decay_c > 0.:
@@ -585,14 +605,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([x, mask, y], cost, name='f_cost')
+    f_cost = theano.function([x, mask, wmask, y], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([x, mask, y], grads, name='f_grad')
+    f_grad = theano.function([x, mask, wmask, y], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        x, mask, y, cost)
+                                        x, mask, wmask, y, cost)
 
     print 'Optimization'
 
@@ -638,7 +658,7 @@ def train_lstm(
 
 
                 #print y
-                cost = f_grad_shared(x, mask, y)
+                cost = f_grad_shared(x, mask, wmask, y)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
