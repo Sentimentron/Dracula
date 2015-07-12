@@ -371,7 +371,7 @@ def build_model(tparams, options):
     x.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
     mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    wmask = tensor.tensor3('wmask', dtype=config.floatX)
+    wmask = tensor.matrix('wmask', dtype='int64')
     y = tensor.matrix('y', dtype='int64')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
 
@@ -396,7 +396,7 @@ def build_model(tparams, options):
     # >>> numpy.einsum('iac,bid->aid',mask,proj).shape
     #  (142, 16, 128)
 
-    proj = wmask * proj
+#    proj = wmask * proj
 
     #proj = wmask * theano.tensor.arange(n_timesteps).reshape((n_timesteps, 1))
 
@@ -411,9 +411,37 @@ def build_model(tparams, options):
  #                         )
 #
     #proj = proj * mask[:, :, None]
+
+    avg_layer = tensor.alloc(0, 80, 20, 16, 128)
+
+    def set_value_at_position(location, values, output_model):
+        zeros_subtensor = output_model[location[0], location[1], location[2]]
+        values_subtensor = values[location[3], location[2]]
+        print values_subtensor.owner
+        return tensor.set_subtensor(zeros_subtensor, values_subtensor)
+
+#   avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]] = proj[wmask[:, 2], wmask[:, 3]]
+#   avg_layer = proj[wmask[:, 2], wmask[:, 3]]
+#   tensor.set_subtensor(avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]], proj[wmask[:, 2], wmask[:, 3]])
+
+#    proj = theano.printing.Print("AVG")(avg_layer)
+
+    result, _ = theano.scan(fn=set_value_at_position,
+                         outputs_info=None,
+                         sequences=[wmask],
+                         non_sequences=[proj, avg_layer]
+                         )
+
+    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
+
+#   proj = theano.printing.Print("PROJ")(proj)
+#   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
+
+    print avg_per_word.type, proj.type
+
     pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
-                          sequences=[proj, theano.tensor.arange(140)]
+                          sequences=[avg_per_word, theano.tensor.arange(140)]
                           )
 
     #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
