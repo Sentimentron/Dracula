@@ -1,6 +1,7 @@
 import cPickle
 import gzip
 import os
+import sys
 
 import numpy
 import theano
@@ -70,6 +71,9 @@ def prepare_data(seqs, labels, maxlen=None):
                 i = 0
             else:
                 i += 1
+            if i >= 14 or c >= 14:
+                print >> sys.stderr, "Warning: truncation"
+                break
 
     return x, x_mask, words_mask, y
 

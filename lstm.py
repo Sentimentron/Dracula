@@ -412,7 +412,7 @@ def build_model(tparams, options):
 #
     #proj = proj * mask[:, :, None]
 
-    avg_layer = tensor.alloc(0, 80, 20, 16, 128)
+    avg_layer = tensor.alloc(0, 14, 14, 16, 128)
 
     def set_value_at_position(location, values, output_model):
         zeros_subtensor = output_model[location[0], location[1], location[2]]
