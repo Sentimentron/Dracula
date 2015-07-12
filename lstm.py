@@ -1,4 +1,5 @@
 '''
+            e[:lengths[idx], idx] = l
 Build a tweet sentiment analyzer
 '''
 from collections import OrderedDict
@@ -372,6 +373,7 @@ def build_model(tparams, options):
     mask = tensor.matrix('mask', dtype=config.floatX)
     mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     wmask = tensor.matrix('wmask', dtype='int64')
+    wmask.tag.test_value = numpy.random.randint(0, 13, (6, 4))
     y = tensor.matrix('y', dtype='int64')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
 
@@ -412,13 +414,13 @@ def build_model(tparams, options):
 #
     #proj = proj * mask[:, :, None]
 
-    avg_layer = tensor.alloc(0, 14, 14, 16, 128)
+    avg_layer = tensor.alloc(0, 16, 16, n_samples, 128)
 
-    def set_value_at_position(location, values, output_model):
+    def set_value_at_position(location, output_model, values):
+        print location.type, values.type, output_model.type
         zeros_subtensor = output_model[location[0], location[1], location[2]]
         values_subtensor = values[location[3], location[2]]
-        print values_subtensor.owner
-        return tensor.set_subtensor(zeros_subtensor, values_subtensor)
+        return tensor.inc_subtensor(zeros_subtensor, values_subtensor)
 
 #   avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]] = proj[wmask[:, 2], wmask[:, 3]]
 #   avg_layer = proj[wmask[:, 2], wmask[:, 3]]
@@ -426,13 +428,16 @@ def build_model(tparams, options):
 
 #    proj = theano.printing.Print("AVG")(avg_layer)
 
-    result, _ = theano.scan(fn=set_value_at_position,
-                         outputs_info=None,
+    result, _ = theano.foldl(fn=set_value_at_position,
                          sequences=[wmask],
-                         non_sequences=[proj, avg_layer]
+                         outputs_info=[avg_layer],
+                         non_sequences=[proj]
                          )
 
-    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
+    result = theano.printing.Print("RESULT", attrs=["shape"])(result)
+#    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
+    avg_per_word = result.mean(axis=1, dtype=config.floatX)
+    avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
 
 #   proj = theano.printing.Print("PROJ")(proj)
 #   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
@@ -441,7 +446,7 @@ def build_model(tparams, options):
 
     pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
-                          sequences=[avg_per_word, theano.tensor.arange(140)]
+                          sequences=[avg_per_word, theano.tensor.arange(16)]
                           )
 
     #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
@@ -501,7 +506,9 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
         preds = f_pred(x, mask, wmask)
-        valid_err.append((preds == y).sum())
+#        valid_err.append((preds == y).sum())
+        acc = numpy.equal(preds, y)
+        valid_err.append(acc.sum())
         valid_shapes.append(x.shape[0] * x.shape[1])
 
     valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()
@@ -528,9 +535,8 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
                 cur_words.append(chardict[c])
                 if pos not in posdict:
                     posdict[pos] = len(posdict)+1
-                cur_labels.append(posdict[pos])
+            cur_labels.append(posdict[pos])
             cur_words.append(0)
-            cur_labels.append(0)
     print len(words), len(labels)
     return words, labels
 

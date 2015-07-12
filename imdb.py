@@ -48,32 +48,34 @@ def prepare_data(seqs, labels, maxlen=None):
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
     #words_mask = numpy.zeros((maxlen, 80, n_samples)).astype(theano.config.floatX)
     words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
-    y = numpy.zeros((maxlen, n_samples)).astype('int64')
+    y = numpy.zeros((16, n_samples)).astype('int64')
     for idx, (s, l) in enumerate(zip(seqs, labels)):
         # idx is the current position in the mini-batch
         # s is a list of characters 
         # l is a list of labels
         x[:lengths[idx], idx] = s
-        y[:lengths[idx], idx] = l
         x_mask[:lengths[idx], idx] = 1.
 
         c = 0
         i = 0
         for j, a in enumerate(seqs):
+            if s == 0 or i >= 16:
+                c += 1
+                i = 0
+            if c >= 16:
+                print >> sys.stderr, "Warning: truncation"
+                break
+            if c >= len(l):
+                break
             # c is the current word
             # i is the current word index
             words_mask[j * idx, 0] = c # First element stores the word index
             words_mask[j * idx, 1] = i # Second stores the intra-word offset
             words_mask[j * idx, 2] = idx # Original mini-batch
             words_mask[j * idx, 3] = j # Original character index
-            if s == 0:
-                c += 1
-                i = 0
-            else:
-                i += 1
-            if i >= 14 or c >= 14:
-                print >> sys.stderr, "Warning: truncation"
-                break
+            
+            y[c, idx] = l[c]
+            i += 1
 
     return x, x_mask, words_mask, y
 
