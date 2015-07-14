@@ -69,10 +69,10 @@ def prepare_data(seqs, labels, maxlen=None):
                 break
             # c is the current word
             # i is the current word index
-            words_mask[j * idx, 0] = c # First element stores the word index
-            words_mask[j * idx, 1] = i # Second stores the intra-word offset
-            words_mask[j * idx, 2] = idx # Original mini-batch
-            words_mask[j * idx, 3] = j # Original character index
+            words_mask[idx * 16 + j, 0] = c # First element stores the word index
+            words_mask[idx * 16 + j, 1] = i # Second stores the intra-word offset
+            words_mask[idx * 16 + j, 2] = idx # Original mini-batch
+            words_mask[idx * 16 + j, 3] = j # Original character index
             
             y[c, idx] = l[c]
             i += 1
