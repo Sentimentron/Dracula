@@ -72,9 +72,8 @@ def prepare_data(seqs, labels, maxlen=None):
             # If this is a space, then the current character representation
             # is thrown away during averaging
 
-    pprint.pprint(words_mask[:, 0]) # Getting the first tweet in the batch
-    pprint.pprint(x[:, 0])
-    sys.exit(1)
+    #pprint.pprint(words_mask[:, 0]) # Getting the first tweet in the batch
+    #pprint.pprint(x[:, 0])
     return x, x_mask, words_mask, y
 
 

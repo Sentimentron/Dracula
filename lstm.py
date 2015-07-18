@@ -367,14 +367,67 @@ class WAOp(theano.Op):
     Implements per-word mean pooling
     """
     __props__ = ()
-    def make_node(self, avg_layer, instrs_layer):
-        if len(instrs_layer.shape) != 2:
-            pass
-        xi, yi, zi = instrs_layer.shape
-        pass
+    def make_node(self, avg_layer, mask_layer):
+        self.n_timesteps = 0
+        self.n_samples = 0
+        return theano.Apply(self, inputs=[avg_layer, mask_layer], outputs=[avg_layer.type()])
 
     def perform(self, node, inputs, output_storage):
-        pass
+        avg_layer, mask_layer = inputs
+
+        if len(mask_layer.shape) != 2:
+            raise TypeError("Mask layer must be 2D!")
+        if len(avg_layer.shape) != 3:
+            raise TypeError("Character layer must be 3D!")
+
+        self.n_timesteps = mask_layer.shape[0]
+        if avg_layer.shape[0] != self.n_timesteps:
+            raise TypeError("Mask and character layer do not agree on a tweet size")
+
+        self.n_samples = mask_layer.shape[1]
+        if avg_layer.shape[1] != self.n_samples:
+            raise TypeError("Mask and character layer do not agree on a batch size")
+
+        count = numpy.zeros((self.n_timesteps, self.n_samples))
+        output_layer = avg_layer.copy() #numpy.zeros((self.n_timesteps, self.n_samples, avg_layer.shape[2]))
+
+        for charidx in range(self.n_timesteps):
+            for tweetidx in range(self.n_samples):
+                wordidx = mask_layer[charidx, tweetidx]
+                # Increment the layer
+                output_layer[wordidx, tweetidx, :] = \
+                    numpy.add(output_layer[wordidx, tweetidx], avg_layer[charidx, tweetidx])
+                count[wordidx, tweetidx] += 1
+
+        dim1, dim2 = numpy.nonzero(count)
+        for charidx, tweetidx in zip(dim1, dim2):
+            output_layer[wordidx, tweetidx, :] = \
+                output_layer[wordidx, tweetidx, :] / float(count[wordidx, tweetidx])
+
+        output_storage[0][0] = output_layer
+
+    def infer_shape(self, node, i0_shapes, i1_shapes):
+        print i0_shapes
+        sys.exit(1)
+        return i0_shapes
+
+    def grad(self, inputs, output_grads):
+        avg_layer, mask_layer = inputs
+        grads = output_grads[0]
+        count = numpy.zeros((self.n_timesteps, self.n_samples))
+
+        for charidx in range(self.n_timesteps):
+            for tweetidx in range(self.n_samples):
+                wordidx = mask_layer[charidx, tweetidx]
+                count[wordidx, tweetidx] = 1
+
+        for charidx in range(self.n_timesteps):
+            for tweetidx in range(self.n_samples):
+                wordidx = mask_layer[charidx, tweetidx]
+                grad = grads[wordidx, tweetidx, :] * count[wordidx, tweetidx]
+                avg_layer[charidx, tweetidx, :] = grad
+
+        return [grads, theano.gradient.grad_undefined(self, 1, mask_layer)]
 
 
 def build_model(tparams, options):
@@ -410,6 +463,8 @@ def build_model(tparams, options):
 
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
+    result = WAOp()(proj, wmask)
+    print result
     # >>> numpy.einsum('iac,bid->aid',mask,proj).shape
     #  (142, 16, 128)
 
@@ -429,13 +484,13 @@ def build_model(tparams, options):
 #
     #proj = proj * mask[:, :, None]
 
-    avg_layer = tensor.alloc(0, 16, 16, n_samples, 128)
+    #avg_layer = tensor.alloc(0, 16, 16, n_samples, 128)
 
-    def set_value_at_position(location, output_model, values):
-        print location.type, values.type, output_model.type
-        zeros_subtensor = output_model[location[0], location[1], location[2]]
-        values_subtensor = values[location[3], location[2]]
-        return tensor.inc_subtensor(zeros_subtensor, values_subtensor)
+    #def set_value_at_position(location, output_model, values):
+    #    print location.type, values.type, output_model.type
+    #    zeros_subtensor = output_model[location[0], location[1], location[2]]
+    #    values_subtensor = values[location[3], location[2]]
+    #    return tensor.inc_subtensor(zeros_subtensor, values_subtensor)
 
 #   avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]] = proj[wmask[:, 2], wmask[:, 3]]
 #   avg_layer = proj[wmask[:, 2], wmask[:, 3]]
@@ -443,25 +498,25 @@ def build_model(tparams, options):
 
 #    proj = theano.printing.Print("AVG")(avg_layer)
 
-    result, _ = theano.foldl(fn=set_value_at_position,
-                         sequences=[wmask],
-                         outputs_info=[avg_layer],
-                         non_sequences=[proj]
-                         )
+    #result, _ = theano.foldl(fn=set_value_at_position,
+    #                     sequences=[wmask],
+    #                     outputs_info=[avg_layer],
+    #                     non_sequences=[proj]
+    #                     )
 
-    result = theano.printing.Print("RESULT", attrs=["shape"])(result)
+    # result = theano.printing.Print("RESULT", attrs=["shape"])(result)
 #    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
-    avg_per_word = result.mean(axis=1, dtype=config.floatX)
-    avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
+    # avg_per_word = result.mean(axis=1, dtype=config.floatX)
+    # avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
 
 #   proj = theano.printing.Print("PROJ")(proj)
 #   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
 
-    print avg_per_word.type, proj.type
+    # print avg_per_word.type, proj.type
 
     pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
-                          sequences=[avg_per_word, theano.tensor.arange(16)]
+                          sequences=[result, theano.tensor.arange(16)]
                           )
 
     #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
