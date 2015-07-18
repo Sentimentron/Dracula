@@ -362,6 +362,21 @@ def rmsprop(lr, tparams, grads, x, mask, wmask, y, cost):
     return f_grad_shared, f_update
 
 
+class WAOp(theano.Op):
+    """
+    Implements per-word mean pooling
+    """
+    __props__ = ()
+    def make_node(self, avg_layer, instrs_layer):
+        if len(instrs_layer.shape) != 2:
+            pass
+        xi, yi, zi = instrs_layer.shape
+        pass
+
+    def perform(self, node, inputs, output_storage):
+        pass
+
+
 def build_model(tparams, options):
     trng = RandomStreams(SEED)
 
@@ -517,27 +532,54 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
 
 
 def load_pos_tagged_data(path, chardict = {}, posdict={}):
-    cur_words, cur_labels = [], []
+    cur = []
     words, labels = [], []
     with open(path, 'r') as fin:
         for line in fin:
             line = line.strip()
             if len(line) == 0:
-                words.append(cur_words)
-                labels.append(cur_labels)
-                cur_words = []
-                cur_labels = []
                 continue
             word, pos = line.split('\t')
+            print word, pos
             for c in word:
                 if c not in chardict:
                     chardict[c] = len(chardict)+1
-                cur_words.append(chardict[c])
-                if pos not in posdict:
-                    posdict[pos] = len(posdict)+1
-            cur_labels.append(posdict[pos])
-            cur_words.append(0)
+                cur.append(chardict[c])
+            if pos not in posdict:
+                posdict[pos] = len(posdict)+1
+            words.append(cur)
+            labels.append(posdict[pos])
+            cur = []
     print len(words), len(labels)
+    return words, labels
+
+def load_pos_tagged_data(path, chardict = {}, posdict = {}):
+    words, labels = [], []
+    word_buf, label_buf = [], []
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                # Moving onto a new tweet
+                words.append(word_buf)
+                labels.append(label_buf)
+                word_buf, label_buf = [], []
+            else:
+                word, label = line.split()
+                print word, label
+                for c in word:
+                    if c not in chardict:
+                        # Ensure space is always zero
+                        chardict[c] = len(chardict)+1
+                    word_buf.append(chardict[c])
+                word_buf.append(0)
+                if label not in posdict:
+                    # Ensure space is always zero
+                    posdict[label] = len(posdict)+1
+                label_buf.append(posdict[label])
+    if len(word_buf) > 0:
+        words.append(word_buf)
+        labels.append(label_buf)
     return words, labels
 
 def split_at(src, prop):

@@ -47,7 +47,9 @@ def prepare_data(seqs, labels, maxlen=None):
     x = numpy.zeros((maxlen, n_samples)).astype('int64')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
     #words_mask = numpy.zeros((maxlen, 80, n_samples)).astype(theano.config.floatX)
-    words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
+    #words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
+    #index stored in here defines which word a corresponding position belongs to
+    words_mask = numpy.zeros((maxlen, n_samples)).astype('int64')
     y = numpy.zeros((16, n_samples)).astype('int64')
     for idx, (s, l) in enumerate(zip(seqs, labels)):
         # idx is the current position in the mini-batch
@@ -56,27 +58,23 @@ def prepare_data(seqs, labels, maxlen=None):
         x[:lengths[idx], idx] = s
         x_mask[:lengths[idx], idx] = 1.
 
-        c = 0
-        i = 0
-        for j, a in enumerate(seqs):
-            if s == 0 or i >= 16:
-                c += 1
-                i = 0
-            if c >= 16:
-                print >> sys.stderr, "Warning: truncation"
-                break
-            if c >= len(l):
-                break
+        c = 1
+        # j is the current position within the word
+        #
+        for j, a in enumerate(s):
+            # a is the current character
             # c is the current word
             # i is the current word index
-            words_mask[idx * 16 + j, 0] = c # First element stores the word index
-            words_mask[idx * 16 + j, 1] = i # Second stores the intra-word offset
-            words_mask[idx * 16 + j, 2] = idx # Original mini-batch
-            words_mask[idx * 16 + j, 3] = j # Original character index
-            
-            y[c, idx] = l[c]
-            i += 1
+            if a == 0:
+                c += 1 # this is a space, increment
+            else:
+                words_mask[j, idx] = c
+            # If this is a space, then the current character representation
+            # is thrown away during averaging
 
+    pprint.pprint(words_mask[:, 0]) # Getting the first tweet in the batch
+    pprint.pprint(x[:, 0])
+    sys.exit(1)
     return x, x_mask, words_mask, y
 
 
