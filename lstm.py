@@ -394,36 +394,48 @@ class WAOp(theano.Op):
         for charidx in range(self.n_timesteps):
             for tweetidx in range(self.n_samples):
                 wordidx = mask_layer[charidx, tweetidx]
+                if wordidx == 0:
+                    continue
+                else:
+                    wordidx -= 1
                 # Increment the layer
                 output_layer[wordidx, tweetidx, :] = \
                     numpy.add(output_layer[wordidx, tweetidx], avg_layer[charidx, tweetidx])
                 count[wordidx, tweetidx] += 1
 
         dim1, dim2 = numpy.nonzero(count)
-        for charidx, tweetidx in zip(dim1, dim2):
+        for wordidx, tweetidx in zip(dim1, dim2):
             output_layer[wordidx, tweetidx, :] = \
                 output_layer[wordidx, tweetidx, :] / float(count[wordidx, tweetidx])
 
         output_storage[0][0] = output_layer
 
-    def infer_shape(self, node, i0_shapes, i1_shapes):
-        print i0_shapes
-        sys.exit(1)
-        return i0_shapes
+    def infer_shape(self, node, i0_shapes):
+        i0, i1 = i0_shapes
+        return [i0]
 
     def grad(self, inputs, output_grads):
         avg_layer, mask_layer = inputs
         grads = output_grads[0]
         count = numpy.zeros((self.n_timesteps, self.n_samples))
+        print count, "HERE"
 
         for charidx in range(self.n_timesteps):
             for tweetidx in range(self.n_samples):
                 wordidx = mask_layer[charidx, tweetidx]
+                if wordidx == 0:
+                    continue
+                else:
+                    wordidx -= 1
                 count[wordidx, tweetidx] = 1
 
         for charidx in range(self.n_timesteps):
             for tweetidx in range(self.n_samples):
                 wordidx = mask_layer[charidx, tweetidx]
+                if wordidx == 0:
+                    continue
+                else:
+                    wordidx -= 1
                 grad = grads[wordidx, tweetidx, :] * count[wordidx, tweetidx]
                 avg_layer[charidx, tweetidx, :] = grad
 
@@ -454,74 +466,17 @@ def build_model(tparams, options):
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix=options['encoder'],
                                             mask=mask)
-    #if options['encoder'] == 'lstm':
-        # Mean pooling
-    #    proj = (proj * mask[:, :, None]).sum(axis=0)
-    #    proj = proj / mask.sum(axis=0)[:, None]
-    #if options['use_dropout']:
-    #    proj = dropout_layer(proj, use_noise, trng)
 
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
     result = WAOp()(proj, wmask)
     print result
-    # >>> numpy.einsum('iac,bid->aid',mask,proj).shape
-    #  (142, 16, 128)
-
-#    proj = wmask * proj
-
-    #proj = wmask * theano.tensor.arange(n_timesteps).reshape((n_timesteps, 1))
-
-    #proj = theano.tensor.tensordot(wmask, proj, axes=[])
-    #proj = proj.sum(axis=2)
-    #proj = proj / wmask.sum(axis=2)
-
-    #proj, _ = theano.scan(fn=lambda i, m, e, free_variable: m[:,i,:] * e[:,i,:],
-    #                      outputs_info=None,
-    #                      non_sequences=[wmask, proj],
-    #                      n_steps=proj.shape[1]
- #                         )
-#
-    #proj = proj * mask[:, :, None]
-
-    #avg_layer = tensor.alloc(0, 16, 16, n_samples, 128)
-
-    #def set_value_at_position(location, output_model, values):
-    #    print location.type, values.type, output_model.type
-    #    zeros_subtensor = output_model[location[0], location[1], location[2]]
-    #    values_subtensor = values[location[3], location[2]]
-    #    return tensor.inc_subtensor(zeros_subtensor, values_subtensor)
-
-#   avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]] = proj[wmask[:, 2], wmask[:, 3]]
-#   avg_layer = proj[wmask[:, 2], wmask[:, 3]]
-#   tensor.set_subtensor(avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]], proj[wmask[:, 2], wmask[:, 3]])
-
-#    proj = theano.printing.Print("AVG")(avg_layer)
-
-    #result, _ = theano.foldl(fn=set_value_at_position,
-    #                     sequences=[wmask],
-    #                     outputs_info=[avg_layer],
-    #                     non_sequences=[proj]
-    #                     )
-
-    # result = theano.printing.Print("RESULT", attrs=["shape"])(result)
-#    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
-    # avg_per_word = result.mean(axis=1, dtype=config.floatX)
-    # avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
-
-#   proj = theano.printing.Print("PROJ")(proj)
-#   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
-
-    # print avg_per_word.type, proj.type
 
     pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
                           sequences=[result, theano.tensor.arange(16)]
                           )
 
-    #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
-
-    #pred = theano.printing.Print("PRED")(pred)
     f_pred_prob = theano.function([x, mask, wmask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([x, mask, wmask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
@@ -576,10 +531,14 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
         preds = f_pred(x, mask, wmask)
-#        valid_err.append((preds == y).sum())
-        acc = numpy.equal(preds, y)
+        valid_preds = preds[numpy.nonzero(y)]
+        valid_y = y[numpy.nonzero(y)]
+        print valid_y, valid_preds, preds, y
+        acc = numpy.equal(valid_preds, valid_y)
         valid_err.append(acc.sum())
-        valid_shapes.append(x.shape[0] * x.shape[1])
+        valid_shapes.append(valid_y.shape[0] * valid_y.shape[1])
+
+    print valid_err, valid_shapes
 
     valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()
 

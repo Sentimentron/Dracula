@@ -50,14 +50,14 @@ def prepare_data(seqs, labels, maxlen=None):
     #words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
     #index stored in here defines which word a corresponding position belongs to
     words_mask = numpy.zeros((maxlen, n_samples)).astype('int64')
-    y = numpy.zeros((16, n_samples)).astype('int64')
+    y = numpy.zeros((40, n_samples)).astype('int64')
     for idx, (s, l) in enumerate(zip(seqs, labels)):
         # idx is the current position in the mini-batch
         # s is a list of characters 
         # l is a list of labels
         x[:lengths[idx], idx] = s
         x_mask[:lengths[idx], idx] = 1.
-        y[:lengths[idx], idx] = l
+        y[:len(l), idx] = l
 
         c = 1
         # j is the current position within the word
