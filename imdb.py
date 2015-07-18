@@ -57,6 +57,7 @@ def prepare_data(seqs, labels, maxlen=None):
         # l is a list of labels
         x[:lengths[idx], idx] = s
         x_mask[:lengths[idx], idx] = 1.
+        y[:lengths[idx], idx] = l
 
         c = 1
         # j is the current position within the word
