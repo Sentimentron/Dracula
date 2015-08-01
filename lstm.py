@@ -386,33 +386,9 @@ def build_model(tparams, options):
     proj = get_layer(options['encoder'])[1](tparams, emb, options,
                                             prefix=options['encoder'],
                                             mask=mask)
-    #if options['encoder'] == 'lstm':
-        # Mean pooling
-    #    proj = (proj * mask[:, :, None]).sum(axis=0)
-    #    proj = proj / mask.sum(axis=0)[:, None]
-    #if options['use_dropout']:
-    #    proj = dropout_layer(proj, use_noise, trng)
 
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
-    # >>> numpy.einsum('iac,bid->aid',mask,proj).shape
-    #  (142, 16, 128)
-
-#    proj = wmask * proj
-
-    #proj = wmask * theano.tensor.arange(n_timesteps).reshape((n_timesteps, 1))
-
-    #proj = theano.tensor.tensordot(wmask, proj, axes=[])
-    #proj = proj.sum(axis=2)
-    #proj = proj / wmask.sum(axis=2)
-
-    #proj, _ = theano.scan(fn=lambda i, m, e, free_variable: m[:,i,:] * e[:,i,:],
-    #                      outputs_info=None,
-    #                      non_sequences=[wmask, proj],
-    #                      n_steps=proj.shape[1]
- #                         )
-#
-    #proj = proj * mask[:, :, None]
 
     avg_layer = tensor.alloc(0, 16, 16, n_samples, 128)
 
@@ -421,12 +397,6 @@ def build_model(tparams, options):
         zeros_subtensor = output_model[location[0], location[1], location[2]]
         values_subtensor = values[location[3], location[2]]
         return tensor.inc_subtensor(zeros_subtensor, values_subtensor)
-
-#   avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]] = proj[wmask[:, 2], wmask[:, 3]]
-#   avg_layer = proj[wmask[:, 2], wmask[:, 3]]
-#   tensor.set_subtensor(avg_layer[wmask[:, 0], wmask[:, 1], wmask[:, 2]], proj[wmask[:, 2], wmask[:, 3]])
-
-#    proj = theano.printing.Print("AVG")(avg_layer)
 
     result, _ = theano.foldl(fn=set_value_at_position,
                          sequences=[wmask],
