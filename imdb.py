@@ -69,6 +69,7 @@ def prepare_data(seqs, labels, maxlen=None):
                 break
             # c is the current word
             # i is the current word index
+            assert sum(words_mask[j * idx, :] == 0.0)
             words_mask[j * idx, 0] = c # First element stores the word index
             words_mask[j * idx, 1] = i # Second stores the intra-word offset
             words_mask[j * idx, 2] = idx # Original mini-batch

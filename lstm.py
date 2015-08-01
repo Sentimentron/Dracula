@@ -12,6 +12,7 @@ import theano
 from theano import config
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+from theano.ifelse import ifelse
 
 import imdb
 
@@ -23,6 +24,45 @@ numpy.random.seed(SEED)
 
 def numpy_floatX(data):
     return numpy.asarray(data, dtype=config.floatX)
+
+def theano_allclose(a, b, rtol=1e-05, atol=1e-08):
+    """
+        From: https://groups.google.com/forum/#!topic/theano-dev/_5738FCQ08E (Markus Beissinger)
+    Elementwise checks to see if the absolute difference between any two elements in a and b are above a threshold.
+
+    The tolerance values are positive, typically very small numbers.
+    The relative difference (rtol * abs(b)) and the absolute difference atol are added together to compare
+    against the absolute difference between a and b.
+
+    If either array contains one or more NaNs, False is returned.
+    Infs are treated as equal if they are in the same place and of the same sign in both arrays.
+
+    Notes
+    -----
+    Not a symmetric equation. See numpy's documentation.
+
+    absolute(a - b) <= (atol + rtol * absolute(b))
+
+    Parameters
+    ----------
+    a : tensor
+        Input to compare
+    b : tensor
+        Input to compare
+    rtol : float, optional
+        The relative tolerance parameter
+    atol : float, optional
+        The absolute tolerance parameter
+
+    Returns
+    -------
+    bool
+        Whether or not the two tensors are within the given tolerance
+    """
+    diff = abs(a - b)
+    tolerance = atol + rtol*abs(b)
+    close = tensor.le(diff, tolerance)
+    return tensor.all(close)
 
 
 def get_minibatches_idx(n, minibatch_size, shuffle=False):
@@ -390,13 +430,21 @@ def build_model(tparams, options):
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
 
-    avg_layer = tensor.alloc(0, 16, 16, n_samples, 128)
+    avg_layer = tensor.alloc(numpy_floatX(0.), 16, 16, 2, 128)
+    location_zeros_mask = tensor.alloc(numpy_floatX(0.), 4)
+
+    wmask = theano.printing.Print("WMASK")(wmask)
 
     def set_value_at_position(location, output_model, values):
-        print location.type, values.type, output_model.type
-        zeros_subtensor = output_model[location[0], location[1], location[2]]
+        location = theano.printing.Print("LOCATION")(location)
+        zeros_subtensor = output_model[1, 0, 0]
         values_subtensor = values[location[3], location[2]]
-        return tensor.inc_subtensor(zeros_subtensor, values_subtensor)
+        result = ifelse(theano_allclose(location[2], 0.0),
+            ifelse(theano_allclose(location, location_zeros_mask), \
+                    tensor.inc_subtensor(output_model[location[0], location[1], location[2]], values_subtensor),
+                    tensor.inc_subtensor(output_model[location[0], location[1], location[2]], zeros_subtensor)),
+            tensor.inc_subtensor(zeros_subtensor, zeros_subtensor))
+        return result 
 
     result, _ = theano.foldl(fn=set_value_at_position,
                          sequences=[wmask],
@@ -404,7 +452,7 @@ def build_model(tparams, options):
                          non_sequences=[proj]
                          )
 
-    result = theano.printing.Print("RESULT", attrs=["shape"])(result)
+    result = theano.printing.Print("RESULT")(result)
 #    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
     avg_per_word = result.mean(axis=1, dtype=config.floatX)
     avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
