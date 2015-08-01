@@ -396,9 +396,9 @@ def build_model(tparams, options):
 
     def set_value_at_position(location, output_model, count_model, fixed_ones, values):
         print location.type, values.type, output_model.type
-        output_subtensor = output_model[location[0], location[1]]
-        count_subtensor = count_model[location[0], location[1]]
-        ones_subtensor = fixed_ones[location[0], location[1]]
+        output_subtensor = output_model[location[0], location[2]]
+        count_subtensor = count_model[location[0], location[2]]
+        ones_subtensor = fixed_ones[location[0], location[2]]
         values_subtensor = values[location[3], location[2]]
         return tensor.inc_subtensor(output_subtensor, values_subtensor), tensor.inc_subtensor(count_subtensor, ones_subtensor)
 
@@ -414,8 +414,12 @@ def build_model(tparams, options):
 #   avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
 
     avg_layer = theano.printing.Print("AVG_LAYER", attrs=['shape'])(avg_layer)
-    count_layer = theano.printing.Print("COUNT", attrs=['shape'])(count_layer)
-    avg_per_word = avg_layer * 1.0/ count_layer
+    count_layer_inverse = 1.0/count_layer
+    count_layer_mask = 1.0 - tensor.isinf(count_layer_inverse)
+    count_layer_mult = tensor.isinf(count_layer_inverse) + count_layer
+    count_layer_mult = theano.printing.Print("COUNT_LAYER_MULT")(count_layer_mult)
+    count_layer_mask = theano.printing.Print("COUNT_LAYER_MASK")(count_layer_mask)
+    avg_per_word = (avg_layer / count_layer_mult) * count_layer_mask
     avg_per_word = theano.printing.Print("AVG_PER_WORD")(avg_per_word)
 
 #   proj = theano.printing.Print("PROJ")(proj)

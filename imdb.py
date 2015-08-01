@@ -47,7 +47,8 @@ def prepare_data(seqs, labels, maxlen=None):
     x = numpy.zeros((maxlen, n_samples)).astype('int64')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
     #words_mask = numpy.zeros((maxlen, 80, n_samples)).astype(theano.config.floatX)
-    words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
+#   words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
+    words_mask = []
     y = numpy.zeros((16, n_samples)).astype('int64')
     for idx, (s, l) in enumerate(zip(seqs, labels)):
         # idx is the current position in the mini-batch
@@ -56,12 +57,14 @@ def prepare_data(seqs, labels, maxlen=None):
         x[:lengths[idx], idx] = s
         x_mask[:lengths[idx], idx] = 1.
 
-        c = 0
-        i = 0
-        for j, a in enumerate(seqs):
-            if s == 0 or i >= 16:
+        c = 1
+        i = 1
+        for j, a in enumerate(s):
+            print j, a, c
+            if a == 0 or i >= 16:
                 c += 1
-                i = 0
+                i = 1
+                continue
             if c >= 16:
                 print >> sys.stderr, "Warning: truncation"
                 break
@@ -69,13 +72,16 @@ def prepare_data(seqs, labels, maxlen=None):
                 break
             # c is the current word
             # i is the current word index
-            words_mask[j * idx, 0] = c # First element stores the word index
-            words_mask[j * idx, 1] = i # Second stores the intra-word offset
-            words_mask[j * idx, 2] = idx # Original mini-batch
-            words_mask[j * idx, 3] = j # Original character index
+            words_mask.append((c, i, idx, j))
+#           words_mask[j + idx, 0] = c # First element stores the word index
+#           words_mask[j + idx, 1] = i # Second stores the intra-word offset
+#           words_mask[j + idx, 2] = idx # Original mini-batch
+#           words_mask[j + idx, 3] = j # Original character index
             
             y[c, idx] = l[c]
             i += 1
+
+    words_mask = numpy.asarray(words_mask, dtype='int32')
 
     return x, x_mask, words_mask, y
 
