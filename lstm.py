@@ -390,24 +390,33 @@ def build_model(tparams, options):
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
 
-    avg_layer = tensor.alloc(0, 16, 16, n_samples, 128)
+    avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, 128)
+    count_layer = tensor.alloc(0, 16, n_samples, 128)
+    fixed_ones  = tensor.ones_like(count_layer)
 
-    def set_value_at_position(location, output_model, values):
+    def set_value_at_position(location, output_model, count_model, fixed_ones, values):
         print location.type, values.type, output_model.type
-        zeros_subtensor = output_model[location[0], location[1], location[2]]
+        output_subtensor = output_model[location[0], location[1]]
+        count_subtensor = count_model[location[0], location[1]]
+        ones_subtensor = fixed_ones[location[0], location[1]]
         values_subtensor = values[location[3], location[2]]
-        return tensor.inc_subtensor(zeros_subtensor, values_subtensor)
+        return tensor.inc_subtensor(output_subtensor, values_subtensor), tensor.inc_subtensor(count_subtensor, ones_subtensor)
 
-    result, _ = theano.foldl(fn=set_value_at_position,
+    (avg_layer, count_layer), _ = theano.foldl(fn=set_value_at_position,
                          sequences=[wmask],
-                         outputs_info=[avg_layer],
-                         non_sequences=[proj]
+                         outputs_info=[avg_layer, count_layer],
+                         non_sequences=[fixed_ones, proj]
                          )
 
-    result = theano.printing.Print("RESULT", attrs=["shape"])(result)
+#   result = theano.printing.Print("RESULT", attrs=["shape"])(result)
 #    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
-    avg_per_word = result.mean(axis=1, dtype=config.floatX)
-    avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
+#   avg_per_word = result.mean(axis=1, dtype=config.floatX)
+#   avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
+
+    avg_layer = theano.printing.Print("AVG_LAYER", attrs=['shape'])(avg_layer)
+    count_layer = theano.printing.Print("COUNT", attrs=['shape'])(count_layer)
+    avg_per_word = avg_layer * 1.0/ count_layer
+    avg_per_word = theano.printing.Print("AVG_PER_WORD")(avg_per_word)
 
 #   proj = theano.printing.Print("PROJ")(proj)
 #   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
