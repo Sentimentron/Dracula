@@ -60,7 +60,6 @@ def prepare_data(seqs, labels, maxlen=None):
         c = 1
         i = 1
         for j, a in enumerate(s):
-            print j, a, c
             if a == 0 or i >= 16:
                 c += 1
                 i = 1
@@ -73,6 +72,7 @@ def prepare_data(seqs, labels, maxlen=None):
             # c is the current word
             # i is the current word index
             words_mask.append((c, i, idx, j))
+#            print c, i, idx, j
 #           words_mask[j + idx, 0] = c # First element stores the word index
 #           words_mask[j + idx, 1] = i # Second stores the intra-word offset
 #           words_mask[j + idx, 2] = idx # Original mini-batch
@@ -82,6 +82,7 @@ def prepare_data(seqs, labels, maxlen=None):
             i += 1
 
     words_mask = numpy.asarray(words_mask, dtype='int32')
+#    print
 
     return x, x_mask, words_mask, y
 

@@ -413,14 +413,14 @@ def build_model(tparams, options):
 #   avg_per_word = result.mean(axis=1, dtype=config.floatX)
 #   avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
 
-    avg_layer = theano.printing.Print("AVG_LAYER", attrs=['shape'])(avg_layer)
+    #avg_layer = theano.printing.Print("AVG_LAYER", attrs=['shape'])(avg_layer)
     count_layer_inverse = 1.0/count_layer
     count_layer_mask = 1.0 - tensor.isinf(count_layer_inverse)
     count_layer_mult = tensor.isinf(count_layer_inverse) + count_layer
-    count_layer_mult = theano.printing.Print("COUNT_LAYER_MULT")(count_layer_mult)
-    count_layer_mask = theano.printing.Print("COUNT_LAYER_MASK")(count_layer_mask)
+    #count_layer_mult = theano.printing.Print("COUNT_LAYER_MULT")(count_layer_mult)
+    #count_layer_mask = theano.printing.Print("COUNT_LAYER_MASK")(count_layer_mask)
     avg_per_word = (avg_layer / count_layer_mult) * count_layer_mask
-    avg_per_word = theano.printing.Print("AVG_PER_WORD")(avg_per_word)
+    #avg_per_word = theano.printing.Print("AVG_PER_WORD")(avg_per_word)
 
 #   proj = theano.printing.Print("PROJ")(proj)
 #   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
@@ -442,9 +442,17 @@ def build_model(tparams, options):
     if pred.dtype == 'float16':
         off = 1e-6
 
-    cost, _ = theano.scan(fn=lambda i, j, free_variable: -tensor.log(i[tensor.arange(n_samples), j] + 1e-8),
-                       outputs_info=None,
-                       sequences=[pred, y, tensor.arange(n_samples)])
+    def cost_scan_i(i, j, free_var):
+    #    i = theano.printing.Print("i", attrs=["shape"])(i)
+    #    j = theano.printing.Print("j", attrs=["shape"])(j)
+        return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
+
+#    cost, _ = theano.scan(fn=lambda i, j, free_variable: -tensor.log(i[tensor.arange(n_samples), j] + 1e-8),
+ #                      outputs_info=None,
+#                       sequences=[pred, y, tensor.arange(n_samples)])
+
+    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
+
     cost = cost.mean()
 
     return use_noise, x, mask, wmask, y, f_pred_prob, f_pred, cost
@@ -517,10 +525,9 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
                     chardict[c] = len(chardict)+1
                 cur_words.append(chardict[c])
                 if pos not in posdict:
-                    posdict[pos] = len(posdict)+1
+                    posdict[pos] = len(posdict)
             cur_labels.append(posdict[pos])
             cur_words.append(0)
-    print len(words), len(labels)
     return words, labels
 
 def split_at(src, prop):
@@ -575,6 +582,10 @@ def train_lstm(
     #                               maxlen=maxlen)
     char_dict = {}
     pos_dict = {}
+    # Pre-populate the dictionaries
+    load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, pos_dict)
+    load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, pos_dict)
+    # Now load the data for real
     train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, pos_dict)
     train, valid = split_at(train, 0.05)
     import pprint
