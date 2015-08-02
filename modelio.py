@@ -4,6 +4,9 @@
 
 """
 
+import numpy
+import theano
+
 def load_pos_tagged_data(path, chardict = {}, posdict={}):
     cur_words, cur_labels = [], []
     words, labels = [], []

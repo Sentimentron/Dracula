@@ -5,8 +5,9 @@
 """
 
 import unittest
+import numpy
 
-from io import load_pos_tagged_data
+from modelio import load_pos_tagged_data, prepare_data
 
 class TestIOMethods(unittest.TestCase):
 
@@ -83,3 +84,21 @@ class TestIOMethods(unittest.TestCase):
 		self.assertEquals(labels[9], [3])
 
 		self.assertEquals(len(labels), 10)
+
+	def test_prepare_data(self):
+		words, labels = load_pos_tagged_data("Data/test_read_2.conll")
+		x, x_mask, words_mask, y = prepare_data(words, labels)
+
+		# 15 is the maximum length of any word
+		self.assertEquals(x.shape, (15, 10))
+		self.assertEquals(x_mask.shape, (15, 10))
+		self.assertEquals(words_mask.shape, (64, 4))
+		self.assertEquals(y.shape, (16, 10))
+
+		self.assertEquals(list(x[:, 0]), [1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0])
+		self.assertEquals(list(x_mask[:, 0]), [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
+		self.assertEquals(list(y[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+
+		self.assertEquals(list(words_mask[0:7, 0]), [0, 0, 0, 0, 0, 0, 0])
+		self.assertEquals(list(words_mask[0:7, 2]), [0, 0, 0, 0, 0, 0, 0])
+
