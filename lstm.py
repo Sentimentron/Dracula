@@ -2,6 +2,7 @@
             e[:lengths[idx], idx] = l
 Build a tweet sentiment analyzer
 '''
+
 from collections import OrderedDict
 import cPickle as pkl
 import sys
@@ -13,6 +14,9 @@ from theano import config
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
+from util import get_minibatches_idx, numpy_floatX
+from io import load_pos_tagged_data
+
 import imdb
 
 datasets = {'imdb': (imdb.load_data, imdb.prepare_data)}
@@ -20,34 +24,6 @@ datasets = {'imdb': (imdb.load_data, imdb.prepare_data)}
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
-
-def numpy_floatX(data):
-    return numpy.asarray(data, dtype=config.floatX)
-
-
-def get_minibatches_idx(n, minibatch_size, shuffle=False):
-    """
-    Used to shuffle the dataset at each iteration.
-    """
-
-    idx_list = numpy.arange(n, dtype="int32")
-
-    if shuffle:
-        numpy.random.shuffle(idx_list)
-
-    minibatches = []
-    minibatch_start = 0
-    for i in range(n // minibatch_size):
-        minibatches.append(idx_list[minibatch_start:
-                                    minibatch_start + minibatch_size])
-        minibatch_start += minibatch_size
-
-    if (minibatch_start != n):
-        # Make a minibatch out of what is left
-        minibatches.append(idx_list[minibatch_start:])
-
-    return zip(range(len(minibatches)), minibatches)
-
 
 def get_dataset(name):
     return datasets[name][0], datasets[name][1]
@@ -505,30 +481,6 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
     valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()
 
     return valid_err
-
-
-def load_pos_tagged_data(path, chardict = {}, posdict={}):
-    cur_words, cur_labels = [], []
-    words, labels = [], []
-    with open(path, 'r') as fin:
-        for line in fin:
-            line = line.strip()
-            if len(line) == 0:
-                words.append(cur_words)
-                labels.append(cur_labels)
-                cur_words = []
-                cur_labels = []
-                continue
-            word, pos = line.split('\t')
-            for c in word:
-                if c not in chardict:
-                    chardict[c] = len(chardict)+1
-                cur_words.append(chardict[c])
-                if pos not in posdict:
-                    posdict[pos] = len(posdict)+1
-            cur_labels.append(posdict[pos])
-            cur_words.append(0)
-    return words, labels
 
 def split_at(src, prop):
     src_words, src_labels = [], []
