@@ -99,6 +99,14 @@ class TestIOMethods(unittest.TestCase):
 		self.assertEquals(list(x_mask[:, 0]), [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
 		self.assertEquals(list(y[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
+		# Index 0 is the word index
+		# Index 2 is the mini-batch index
 		self.assertEquals(list(words_mask[0:7, 0]), [0, 0, 0, 0, 0, 0, 0])
 		self.assertEquals(list(words_mask[0:7, 2]), [0, 0, 0, 0, 0, 0, 0])
+
+		self.assertEquals(list(words_mask[7:14, 0]), [0, 0, 0, 0, 0, 0, 0])
+		self.assertEquals(list(words_mask[7:14, 2]), [1, 1, 1, 1, 1, 1, 1])
+
+
+		# Need a y-mask, maybe that's stopping us from training?
 
