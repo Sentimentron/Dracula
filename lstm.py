@@ -525,7 +525,7 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
                     chardict[c] = len(chardict)+1
                 cur_words.append(chardict[c])
                 if pos not in posdict:
-                    posdict[pos] = len(posdict)
+                    posdict[pos] = len(posdict)+1
             cur_labels.append(posdict[pos])
             cur_words.append(0)
     return words, labels
@@ -606,6 +606,7 @@ def train_lstm(
 
     print numpy.max(train[1], axis=None)
     ydim = numpy.max(numpy.amax(train[1])) + 1
+    ydim = 26 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
 

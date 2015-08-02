@@ -57,8 +57,8 @@ def prepare_data(seqs, labels, maxlen=None):
         x[:lengths[idx], idx] = s
         x_mask[:lengths[idx], idx] = 1.
 
-        c = 1
-        i = 1
+        c = 0
+        i = 0
         for j, a in enumerate(s):
             if a == 0 or i >= 16:
                 c += 1
