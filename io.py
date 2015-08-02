@@ -11,7 +11,7 @@ def load_pos_tagged_data(path, chardict = {}, posdict={}):
         for line in fin:
             line = line.strip()
             if len(line) == 0:
-                words.append(cur_words)
+                words.append(cur_words[:-1])
                 labels.append(cur_labels)
                 cur_words = []
                 cur_labels = []

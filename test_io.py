@@ -62,4 +62,24 @@ class TestIOMethods(unittest.TestCase):
 			Check we can handle a sample of 10 correctly.
 		"""
 
-		pass
+		char = {}
+		pos = {}
+		words, labels = load_pos_tagged_data("Data/test_read_2.conll", char, pos)
+
+		self.assertEquals(words[0], [1, 2, 3, 4, 5, 6, 7])
+		self.assertEquals(words[1], [8, 9, 9, 10, 5, 6, 7])
+		self.assertEquals(words[2], [1, 9, 4])
+		self.assertEquals(len(words), 10)
+
+		self.assertEquals(labels[0], [1])
+		self.assertEquals(labels[1], [1])
+		self.assertEquals(labels[2], [2])
+		self.assertEquals(labels[3], [3])
+		self.assertEquals(labels[4], [4])
+		self.assertEquals(labels[5], [1])
+		self.assertEquals(labels[6], [1])
+		self.assertEquals(labels[7], [5])
+		self.assertEquals(labels[8], [3])
+		self.assertEquals(labels[9], [3])
+
+		self.assertEquals(len(labels), 10)
