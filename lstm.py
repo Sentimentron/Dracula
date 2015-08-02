@@ -14,8 +14,8 @@ from theano import config
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-from util import get_minibatches_idx, numpy_floatX
-from io import load_pos_tagged_data
+from util import get_minibatches_idx, numpy_floatX,
+from io import load_pos_tagged_data, prepare_data
 
 import imdb
 

@@ -10,14 +10,14 @@ from io import load_pos_tagged_data
 
 class TestIOMethods(unittest.TestCase):
 
-	def test_load_pos_tagged_data(self):
+	def test_load_pos_tagged_data_1(self):
 		"""
 		Check that the Tweebo POS format is read correctly.
 		"""
 
 		char = {}
 		pos = {}
-		words, labels = load_pos_tagged_data("Data/test_read.conll", char, pos)
+		words, labels = load_pos_tagged_data("Data/test_read_1.conll", char, pos)
 
 		self.assertEquals(char['R'], 1)
 		self.assertEquals(char['T'], 2)
@@ -53,7 +53,13 @@ class TestIOMethods(unittest.TestCase):
 		self.assertEquals(pos['N'], 5)
 		self.assertEquals(len(pos), 5)
 
-		print words
-
 		self.assertEquals(words[0][0:3], [1, 2, 0])
+		self.assertEquals(words[0][3:13],  [3, 4, 4, 5, 6, 7, 8, 9, 6, 0])
 		self.assertEquals(labels, [[1, 2, 1, 2, 3, 4, 3, 5, 5, 4]])
+
+	def test_load_pos_tagged_data_2(self):
+		"""
+			Check we can handle a sample of 10 correctly.
+		"""
+
+		pass
