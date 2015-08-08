@@ -87,7 +87,7 @@ class TestIOMethods(unittest.TestCase):
 
 	def test_prepare_data(self):
 		words, labels = load_pos_tagged_data("Data/test_read_2.conll")
-		x, x_mask, words_mask, y = prepare_data(words, labels)
+		x, x_mask, words_mask, y, y_mask = prepare_data(words, labels)
 
 		# 15 is the maximum length of any word
 		self.assertEquals(x.shape, (15, 10))
@@ -98,6 +98,7 @@ class TestIOMethods(unittest.TestCase):
 		self.assertEquals(list(x[:, 0]), [1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0])
 		self.assertEquals(list(x_mask[:, 0]), [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
 		self.assertEquals(list(y[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+		self.assertEquals(list(y_mask[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
 		# Index 0 is the word index
 		# Index 2 is the mini-batch index

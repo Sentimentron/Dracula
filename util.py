@@ -6,6 +6,7 @@ import requests
 import logging
 import os
 from theano import config
+import numpy
 
 def download_file(url, outpath):
     """

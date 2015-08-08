@@ -14,12 +14,12 @@ from theano import config
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-from util import get_minibatches_idx, numpy_floatX,
-from io import load_pos_tagged_data, prepare_data
+from util import get_minibatches_idx, numpy_floatX
+from modelio import load_pos_tagged_data, prepare_data
 
 import imdb
 
-datasets = {'imdb': (imdb.load_data, imdb.prepare_data)}
+datasets = {'imdb': (imdb.load_data, prepare_data)}
 
 # Set the random number generators' seeds for consistency
 SEED = 123
@@ -212,7 +212,7 @@ def sgd(lr, tparams, grads, x, mask, wmask, y, cost):
     return f_grad_shared, f_update
 
 
-def adadelta(lr, tparams, grads, x, mask, wmask, y, cost):
+def adadelta(lr, tparams, grads, x, mask, wmask, y_mask, y, cost):
     """
     An adaptive learning rate optimizer
 
@@ -255,7 +255,7 @@ def adadelta(lr, tparams, grads, x, mask, wmask, y, cost):
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
              for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function([x, mask, wmask, y], cost, updates=zgup + rg2up,
+    f_grad_shared = theano.function([x, mask, wmask, y_mask, y], cost, updates=zgup + rg2up,
                                     name='adadelta_f_grad_shared', on_unused_input='warn')
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
@@ -352,6 +352,7 @@ def build_model(tparams, options):
     wmask.tag.test_value = numpy.random.randint(0, 13, (6, 4))
     y = tensor.matrix('y', dtype='int64')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
+    y_mask = tensor.matrix('y_mask', dtype='int64')
 
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
@@ -408,11 +409,17 @@ def build_model(tparams, options):
                           sequences=[avg_per_word, theano.tensor.arange(16)]
                           )
 
+    # Ones where we don't care are set to zero
+    pred = theano.printing.Print("PRED", attrs=["shape"])(pred)
+    y_mask = theano.printing.Print("YMASK", attrs=["shape"])(y_mask)
+    #pred = tensor.dot(pred,y_mask)
     #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
+    pred = tensor.set_subtensor(pred[y_mask.nonzero()], 0)
+
 
     #pred = theano.printing.Print("PRED")(pred)
-    f_pred_prob = theano.function([x, mask, wmask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([x, mask, wmask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred_prob = theano.function([x, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([x, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     off = 1e-8
     if pred.dtype == 'float16':
@@ -431,7 +438,7 @@ def build_model(tparams, options):
 
     cost = cost.mean()
 
-    return use_noise, x, mask, wmask, y, f_pred_prob, f_pred, cost
+    return use_noise, x, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
 
 
 def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False):
@@ -444,10 +451,10 @@ def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False):
     n_done = 0
 
     for _, valid_index in iterator:
-        x, mask, wmask, y = prepare_data([data[0][t] for t in valid_index],
+        x, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
-        pred_probs = f_pred_prob(x, mask, wmask)
+        pred_probs = f_pred_prob(x, mask, wmask, y_mask)
         #import pprint
         #pprint.pprint(pred_probs)
         #print pred_probs.shape, x.shape
@@ -469,10 +476,10 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
     valid_err = []
     valid_shapes = []
     for _, valid_index in iterator:
-        x, mask, wmask, y = prepare_data([data[0][t] for t in valid_index],
+        x, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
-        preds = f_pred(x, mask, wmask)
+        preds = f_pred(x, mask, wmask, y_mask)
 #        valid_err.append((preds == y).sum())
         acc = numpy.equal(preds, y)
         valid_err.append(acc.sum())
@@ -577,7 +584,7 @@ def train_lstm(
 
     # use_noise is for dropout
     (use_noise, x, mask, wmask,
-     y, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
 
     if decay_c > 0.:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -586,14 +593,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([x, mask, wmask, y], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([x, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([x, mask, wmask, y], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([x, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        x, mask, wmask, y, cost)
+                                        x, mask, wmask, y, y_mask, cost)
 
     print 'Optimization'
 
@@ -634,12 +641,12 @@ def train_lstm(
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
-                x, mask, wmask, y = prepare_data(x, y)
+                x, mask, wmask, y, y_mask = prepare_data(x, y)
                 n_samples += x.shape[1]
 
 
                 #print y
-                cost = f_grad_shared(x, mask, wmask, y)
+                cost = f_grad_shared(x, mask, wmask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):

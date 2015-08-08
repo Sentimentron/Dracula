@@ -6,6 +6,7 @@
 
 import numpy
 import theano
+import sys
 
 def load_pos_tagged_data(path, chardict = {}, posdict={}):
     cur_words, cur_labels = [], []
@@ -76,6 +77,7 @@ def prepare_data(seqs, labels, maxlen=None):
 #   words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
     words_mask = []
     y = numpy.zeros((16, n_samples)).astype('int64')
+    y_mask = numpy.zeros((16, n_samples)).astype('int64')
     for idx, (s, l) in enumerate(zip(seqs, labels)):
         # idx is the current position in the mini-batch
         # s is a list of characters
@@ -98,16 +100,17 @@ def prepare_data(seqs, labels, maxlen=None):
             # c is the current word
             # i is the current word index
             words_mask.append((c, i, idx, j))
-            print c, i, idx, j
+#           print c, i, idx, j
 #           words_mask[j + idx, 0] = c # First element stores the word index
 #           words_mask[j + idx, 1] = i # Second stores the intra-word offset
 #           words_mask[j + idx, 2] = idx # Original mini-batch
 #           words_mask[j + idx, 3] = j # Original character index
 
             y[c, idx] = l[c]
+            y_mask[c, idx] = 1
             i += 1
 
     words_mask = numpy.asarray(words_mask, dtype='int32')
 #    print
 
-    return x, x_mask, words_mask, y
+    return x, x_mask, words_mask, y, y_mask
