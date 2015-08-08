@@ -414,10 +414,11 @@ def build_model(tparams, options):
                           sequences=[avg_per_word, theano.tensor.arange(16)]
                           )
 
-    raw_pred = theano.printing.Print("PRED_BEFORE")(raw_pred)
+    #raw_pred = theano.printing.Print("PRED_BEFORE")(raw_pred)
     pred = tensor.zeros_like(raw_pred)
-    pred = tensor.set_subtensor(pred[y_mask[0, :], y_mask[1, :]], raw_pred[y_mask[0, :], y_mask[1, :]])
-    pred = theano.printing.Print("PRED_AFTER")(pred)
+    #pred = tensor.set_subtensor(pred[y_mask[0, :], y_mask[1, :]], raw_pred[y_mask[0, :], y_mask[1, :]])
+    pred = tensor.set_subtensor(raw_pred[y_mask.nonzero()], pred[y_mask.nonzero()])
+    #pred = theano.printing.Print("PRED_AFTER")(pred)
 
     # Ones where we don't care are set to zero
     #pred = tensor.dot(pred,y_mask)
