@@ -352,7 +352,7 @@ def build_model(tparams, options):
     wmask.tag.test_value = numpy.random.randint(0, 13, (6, 4))
     y = tensor.matrix('y', dtype='int64')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    y_mask = tensor.matrix('y_mask', dtype='int64')
+    y_mask = tensor.matrix('y_mask', dtype='int32')
 
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
@@ -404,17 +404,24 @@ def build_model(tparams, options):
 
     print avg_per_word.type, proj.type
 
-    pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
+    #avg_per_word = theano.printing.Print("AVG_BEFORE")(avg_per_word)
+    #y_mask = theano.printing.Print("YMASK", attrs=["shape"])(y_mask)
+    #avg_per_word = tensor.set_subtensor(avg_per_word[y_mask[y_mask > 0].nonzero()], 0)
+    #avg_per_word = theano.printing.Print("AVG_AFTER")(avg_per_word)
+
+    raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
                           sequences=[avg_per_word, theano.tensor.arange(16)]
                           )
 
+    raw_pred = theano.printing.Print("PRED_BEFORE")(raw_pred)
+    pred = tensor.zeros_like(raw_pred)
+    pred = tensor.set_subtensor(pred[y_mask[0, :], y_mask[1, :]], raw_pred[y_mask[0, :], y_mask[1, :]])
+    pred = theano.printing.Print("PRED_AFTER")(pred)
+
     # Ones where we don't care are set to zero
-    pred = theano.printing.Print("PRED", attrs=["shape"])(pred)
-    y_mask = theano.printing.Print("YMASK", attrs=["shape"])(y_mask)
     #pred = tensor.dot(pred,y_mask)
     #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
-    pred = tensor.set_subtensor(pred[y_mask.nonzero()], 0)
 
 
     #pred = theano.printing.Print("PRED")(pred)
@@ -480,7 +487,6 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
         preds = f_pred(x, mask, wmask, y_mask)
-#        valid_err.append((preds == y).sum())
         acc = numpy.equal(preds, y)
         valid_err.append(acc.sum())
         valid_shapes.append(x.shape[0] * x.shape[1])

@@ -77,7 +77,8 @@ def prepare_data(seqs, labels, maxlen=None):
 #   words_mask = numpy.zeros((maxlen * n_samples, 4)).astype('int64')
     words_mask = []
     y = numpy.zeros((16, n_samples)).astype('int64')
-    y_mask = numpy.zeros((16, n_samples)).astype('int64')
+    #y_mask = numpy.zeros((16, n_samples)).astype(theano.config.floatX)
+    y_mask = []
     for idx, (s, l) in enumerate(zip(seqs, labels)):
         # idx is the current position in the mini-batch
         # s is a list of characters
@@ -93,7 +94,7 @@ def prepare_data(seqs, labels, maxlen=None):
                 i = 1
                 continue
             if c >= 16:
-                print >> sys.stderr, "Warning: truncation"
+                # print >> sys.stderr, "Warning: truncation"
                 break
             if c >= len(l):
                 break
@@ -107,10 +108,13 @@ def prepare_data(seqs, labels, maxlen=None):
 #           words_mask[j + idx, 3] = j # Original character index
 
             y[c, idx] = l[c]
-            y_mask[c, idx] = 1
+            y_mask.append((c, idx))
+            #y_mask[c, idx] = 1
             i += 1
 
     words_mask = numpy.asarray(words_mask, dtype='int32')
+    y_mask = numpy.asarray(y_mask, dtype='int32')
+    print y_mask
 #    print
 
     return x, x_mask, words_mask, y, y_mask
