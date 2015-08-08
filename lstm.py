@@ -371,6 +371,10 @@ def build_model(tparams, options):
     count_layer = tensor.alloc(0, 16, n_samples, 128)
     fixed_ones  = tensor.ones_like(count_layer)
 
+    #ydim = options[ydim]
+    #y_default_tensor = tensor.allow(ydim,)
+    #y_default_tensor = tensor.inc_subtensor(y_default_tensor[0], 1)
+
     def set_value_at_position(location, output_model, count_model, fixed_ones, values):
         print location.type, values.type, output_model.type
         output_subtensor = output_model[location[0], location[2]]
@@ -397,10 +401,13 @@ def build_model(tparams, options):
     #count_layer_mult = theano.printing.Print("COUNT_LAYER_MULT")(count_layer_mult)
     #count_layer_mask = theano.printing.Print("COUNT_LAYER_MASK")(count_layer_mask)
     avg_per_word = (avg_layer / count_layer_mult) * count_layer_mask
+    #avg_per_word = tensor.zeros_like(raw_avg_per_word)
     #avg_per_word = theano.printing.Print("AVG_PER_WORD")(avg_per_word)
 
 #   proj = theano.printing.Print("PROJ")(proj)
 #   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
+
+    #avg_per_word = tensor.set_subtensor(avg_per_word[y_mask.nonzero()], raw_avg_per_word[y_mask.nonzero()])
 
     print avg_per_word.type, proj.type
 
@@ -409,6 +416,8 @@ def build_model(tparams, options):
     #avg_per_word = tensor.set_subtensor(avg_per_word[y_mask[y_mask > 0].nonzero()], 0)
     #avg_per_word = theano.printing.Print("AVG_AFTER")(avg_per_word)
 
+    #avg_per_word = tensor.dot(y_mask, avg_per_word)
+
     raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
                           sequences=[avg_per_word, theano.tensor.arange(16)]
@@ -416,12 +425,13 @@ def build_model(tparams, options):
 
     #raw_pred = theano.printing.Print("PRED_BEFORE")(raw_pred)
     pred = tensor.zeros_like(raw_pred)
+    pred = tensor.inc_subtensor(pred[:, :, 0], 1)
     #pred = tensor.set_subtensor(pred[y_mask[0, :], y_mask[1, :]], raw_pred[y_mask[0, :], y_mask[1, :]])
-    pred = tensor.set_subtensor(raw_pred[y_mask.nonzero()], pred[y_mask.nonzero()])
-    #pred = theano.printing.Print("PRED_AFTER")(pred)
+    pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
+    #pred = theano.printing.Print("PRED_AFTER", attrs=["shape"])(pred)
 
     # Ones where we don't care are set to zero
-    #pred = tensor.dot(pred,y_mask)
+    # pred = tensor.dot(y_mask, pred)
     #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
 
 
@@ -488,9 +498,9 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
         preds = f_pred(x, mask, wmask, y_mask)
-        acc = numpy.equal(preds, y)
+        acc = numpy.equal(preds[y_mask.nonzero()], y[y_mask.nonzero()])
         valid_err.append(acc.sum())
-        valid_shapes.append(x.shape[0] * x.shape[1])
+        valid_shapes.append(numpy.count_nonzero(y_mask))
 
     valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()
 
@@ -524,7 +534,7 @@ def train_lstm(
     validFreq=370,  # Compute the validation error after this number of update.
     saveFreq=1110,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=16,  # The batch size during training.
+    batch_size=20,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 

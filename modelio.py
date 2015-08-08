@@ -79,7 +79,7 @@ def prepare_data(seqs, labels, maxlen=None):
     y = numpy.zeros((16, n_samples)).astype('int64')
     y_mask = numpy.zeros((16, n_samples)).astype('int32')
     for idx, (s, l) in enumerate(zip(seqs, labels)):
-        # idx is the current position in the mini-batch
+        # idx is the current posdiction in the mini-batch
         # s is a list of characters
         # l is a list of labels
         x[:lengths[idx], idx] = s
