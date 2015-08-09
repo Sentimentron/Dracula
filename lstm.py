@@ -377,8 +377,8 @@ def build_model(tparams, options):
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
 
-    avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, 128)
-    count_layer = tensor.alloc(0, 16, n_samples, 128)
+    avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, options['dim_proj'])
+    count_layer = tensor.alloc(0, 16, n_samples, options['dim_proj'])
     min_layer = tensor.zeros_like(avg_layer) #tensor.alloc(0, 16, n_samples, 128)
     max_layer = tensor.zeros_like(avg_layer) #tensor.alloc(0, 16, n_samples, 128)
     fixed_ones  = tensor.ones_like(count_layer)
@@ -544,7 +544,7 @@ def split_at(src, prop):
     return (src_words, src_labels), (val_words, val_labels)
 
 def train_lstm(
-    dim_proj=128,  # word embeding dimension and LSTM number of hidden units.
+    dim_proj=42,  # word embeding dimension and LSTM number of hidden units.
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
