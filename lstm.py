@@ -74,7 +74,7 @@ def init_params(options):
                                               params,
                                               prefix=options['encoder'])
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
+    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*3,
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
@@ -82,6 +82,7 @@ def init_params(options):
 
 
 def load_params(path, params):
+    print "Loading parameters"
     pp = numpy.load(path)
     for kk, vv in params.iteritems():
         if kk not in pp:
@@ -119,13 +120,22 @@ def param_init_lstm(options, params, prefix='lstm'):
                            ortho_weight(options['dim_proj']),
                            ortho_weight(options['dim_proj']),
                            ortho_weight(options['dim_proj'])], axis=1)
+
+    #W = numpy.concatenate([W, W, W], axis=0)
+
+    print "W", W.shape
     params[_p(prefix, 'W')] = W
     U = numpy.concatenate([ortho_weight(options['dim_proj']),
                            ortho_weight(options['dim_proj']),
                            ortho_weight(options['dim_proj']),
                            ortho_weight(options['dim_proj'])], axis=1)
+
+    #U = numpy.concatenate([U, U, U], axis=0)
+
+    print "U", U.shape
     params[_p(prefix, 'U')] = U
     b = numpy.zeros((4 * options['dim_proj'],))
+    print "B", b.shape
     params[_p(prefix, 'b')] = b.astype(config.floatX)
 
     return params
@@ -369,23 +379,31 @@ def build_model(tparams, options):
 
     avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, 128)
     count_layer = tensor.alloc(0, 16, n_samples, 128)
+    min_layer = tensor.zeros_like(avg_layer) #tensor.alloc(0, 16, n_samples, 128)
+    max_layer = tensor.zeros_like(avg_layer) #tensor.alloc(0, 16, n_samples, 128)
     fixed_ones  = tensor.ones_like(count_layer)
 
     #ydim = options[ydim]
     #y_default_tensor = tensor.allow(ydim,)
     #y_default_tensor = tensor.inc_subtensor(y_default_tensor[0], 1)
 
-    def set_value_at_position(location, output_model, count_model, fixed_ones, values):
+    def set_value_at_position(location, output_model, count_model, min_model, max_model, fixed_ones, values):
         print location.type, values.type, output_model.type
         output_subtensor = output_model[location[0], location[2]]
         count_subtensor = count_model[location[0], location[2]]
+        min_subtensor = min_model[location[0], location[2]]
+        max_subtensor = max_model[location[0], location[2]]
         ones_subtensor = fixed_ones[location[0], location[2]]
         values_subtensor = values[location[3], location[2]]
-        return tensor.inc_subtensor(output_subtensor, values_subtensor), tensor.inc_subtensor(count_subtensor, ones_subtensor)
+        ret_avg_layer = tensor.inc_subtensor(output_subtensor, values_subtensor)
+        ret_count_layer = tensor.inc_subtensor(count_subtensor, ones_subtensor)
+        ret_min_layer = tensor.set_subtensor(min_subtensor, tensor.minimum(min_subtensor, values_subtensor))
+        ret_max_layer = tensor.set_subtensor(max_subtensor, tensor.maximum(max_subtensor, values_subtensor))
+        return ret_avg_layer, ret_count_layer, ret_min_layer, ret_max_layer
 
-    (avg_layer, count_layer), _ = theano.foldl(fn=set_value_at_position,
+    (avg_layer, count_layer, min_layer, max_layer), _ = theano.foldl(fn=set_value_at_position,
                          sequences=[wmask],
-                         outputs_info=[avg_layer, count_layer],
+                         outputs_info=[avg_layer, count_layer, min_layer, max_layer],
                          non_sequences=[fixed_ones, proj]
                          )
 
@@ -402,7 +420,12 @@ def build_model(tparams, options):
     #count_layer_mask = theano.printing.Print("COUNT_LAYER_MASK")(count_layer_mask)
     avg_per_word = (avg_layer / count_layer_mult) * count_layer_mask
     #avg_per_word = tensor.zeros_like(raw_avg_per_word)
-    #avg_per_word = theano.printing.Print("AVG_PER_WORD")(avg_per_word)
+    #avg_per_word = theano.printing.Print("AVG_PER_WORD", attrs=["shape"])(avg_per_word)
+
+    combined_per_words_feats_layer = tensor.concatenate((avg_per_word, min_layer, max_layer), axis=2)
+    #combined_per_words_feats_layer = tensor.as_tensor_variable(combined_per_words_feats_layer, 'COMBINED', ndim=3)
+
+    #combined_per_words_feats_layer = theano.printing.Print("COMBINED", attrs=["shape"])(combined_per_words_feats_layer)
 
 #   proj = theano.printing.Print("PROJ")(proj)
 #   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
@@ -420,7 +443,7 @@ def build_model(tparams, options):
 
     raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
                           outputs_info=None,
-                          sequences=[avg_per_word, theano.tensor.arange(16)]
+                          sequences=[combined_per_words_feats_layer, theano.tensor.arange(16)]
                           )
 
     #raw_pred = theano.printing.Print("PRED_BEFORE")(raw_pred)
