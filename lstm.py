@@ -498,9 +498,11 @@ def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
                                   numpy.array(data[1])[valid_index],
                                   maxlen=140)
         preds = f_pred(x, mask, wmask, y_mask)
-        acc = numpy.equal(preds[y_mask.nonzero()], y[y_mask.nonzero()])
+        #acc = numpy.equal(preds[y_mask.nonzero()], y[y_mask.nonzero()])
+        acc = numpy.equal(preds, y)
+        valid_shapes.append(preds.shape[0] * preds.shape[1])
         valid_err.append(acc.sum())
-        valid_shapes.append(numpy.count_nonzero(y_mask))
+        #valid_shapes.append(numpy.count_nonzero(y_mask))
 
     valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()
 
