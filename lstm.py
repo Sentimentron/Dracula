@@ -344,18 +344,19 @@ def build_model(tparams, options):
     # Used for dropout.
     use_noise = theano.shared(numpy_floatX(0.))
 
-    x = tensor.matrix('x', dtype='int64')
+    x = tensor.matrix('x', dtype='int8')
     x.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
     mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    wmask = tensor.matrix('wmask', dtype='int64')
+    wmask = tensor.matrix('wmask', dtype='int8')
     wmask.tag.test_value = numpy.random.randint(0, 13, (6, 4))
-    y = tensor.matrix('y', dtype='int64')
+    y = tensor.matrix('y', dtype='int8')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    y_mask = tensor.matrix('y_mask', dtype='int32')
+    y_mask = tensor.matrix('y_mask', dtype='int8')
 
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
+    dim = options['dim_proj']
 
     emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps,
                                                 n_samples,
@@ -367,8 +368,8 @@ def build_model(tparams, options):
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
 
-    avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, 128)
-    count_layer = tensor.alloc(0, 16, n_samples, 128)
+    avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
+    count_layer = tensor.alloc(0, 16, n_samples, dim)
     fixed_ones  = tensor.ones_like(count_layer)
 
     #ydim = options[ydim]
@@ -523,11 +524,11 @@ def split_at(src, prop):
     return (src_words, src_labels), (val_words, val_labels)
 
 def train_lstm(
-    dim_proj=128,  # word embeding dimension and LSTM number of hidden units.
+    dim_proj=32,  # word embeding dimension and LSTM number of hidden units.
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
-    decay_c=0.,  # Weight decay for the classifier applied to the U weights.
+    decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
     lrate=0.0001,  # Learning rate for sgd (not used for adadelta and rmsprop)
     n_words=10000,  # Vocabulary size
     optimizer=adadelta,  # sgd, adadelta and rmsprop available, sgd very hard to use, not recommanded (probably need momentum and decaying learning rate).
