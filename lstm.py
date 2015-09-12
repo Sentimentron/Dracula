@@ -17,6 +17,8 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from util import get_minibatches_idx, numpy_floatX
 from modelio import load_pos_tagged_data, prepare_data
 
+from nn_support import pred_error, pred_probs
+
 import imdb
 
 datasets = {'imdb': (imdb.load_data, prepare_data)}
@@ -458,56 +460,6 @@ def build_model(tparams, options):
     cost = cost.mean()
 
     return use_noise, x, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
-
-
-def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False):
-    """ If you want to use a trained model, this is useful to compute
-    the probabilities of new examples.
-    """
-    n_samples = len(data[0])
-    probs = numpy.zeros((n_samples, 2)).astype(config.floatX)
-
-    n_done = 0
-
-    for _, valid_index in iterator:
-        x, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
-                                  numpy.array(data[1])[valid_index],
-                                  maxlen=140)
-        pred_probs = f_pred_prob(x, mask, wmask, y_mask)
-        #import pprint
-        #pprint.pprint(pred_probs)
-        #print pred_probs.shape, x.shape
-        probs[valid_index, :] = pred_probs
-
-        n_done += len(valid_index)
-        if verbose:
-            print '%d/%d samples classified' % (n_done, n_samples)
-
-    return probs
-
-
-def pred_error(f_pred, prepare_data, data, iterator, verbose=False):
-    """
-    Just compute the error
-    f_pred: Theano fct computing the prediction
-    prepare_data: usual prepare_data for that dataset.
-    """
-    valid_err = []
-    valid_shapes = []
-    for _, valid_index in iterator:
-        x, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
-                                  numpy.array(data[1])[valid_index],
-                                  maxlen=140)
-        preds = f_pred(x, mask, wmask, y_mask)
-        #acc = numpy.equal(preds[y_mask.nonzero()], y[y_mask.nonzero()])
-        acc = numpy.equal(preds, y)
-        valid_shapes.append(preds.shape[0] * preds.shape[1])
-        valid_err.append(acc.sum())
-        #valid_shapes.append(numpy.count_nonzero(y_mask))
-
-    valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()
-
-    return valid_err
 
 def split_at(src, prop):
     src_words, src_labels = [], []
