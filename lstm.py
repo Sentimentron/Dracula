@@ -45,9 +45,9 @@ def build_model(tparams, options):
 
     n_timesteps = x.shape[0]
     n_samples = x.shape[1]
-    dim = options['dim_proj']
+    dim = options['dim_proj_chars']
 
-    emb = embeddings_layer(x, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
+    emb = embeddings_layer(x, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj_chars'])
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
 
@@ -84,13 +84,13 @@ def split_at(src, prop):
     return (src_words, src_labels), (val_words, val_labels)
 
 def train_lstm(
-    dim_proj=32,  # word embeding dimension and LSTM number of hidden units.
+    dim_proj_chars=12,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_words=128,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
     decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
     lrate=0.0001,  # Learning rate for sgd (not used for adadelta and rmsprop)
-    n_words=10000,  # Vocabulary size
     optimizer=adadelta,  # sgd, adadelta and rmsprop available, sgd very hard to use, not recommanded (probably need momentum and decaying learning rate).
     encoder='lstm',  # TODO: can be removed must be lstm.
     saveto='lstm_model.npz',  # The best model will be saved there
@@ -131,6 +131,7 @@ def train_lstm(
     ydim = 26 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
+    model_options['n_chars'] = len(char_dict)+1
 
     logging.info('Building model')
     # This create the initial parameters as numpy ndarrays.
