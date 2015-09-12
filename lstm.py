@@ -483,29 +483,14 @@ def train_lstm(
     # Now load the data for real
     train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, pos_dict)
     train, valid = split_at(train, 0.05)
-    import pprint
-    pprint.pprint(len(valid[0]))
-    print len(train[0])
     test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, pos_dict)
 
-    print len(test[0])
-
-    #if test_size > 0:
-        # The test set is sorted by size, but we want to keep random
-        # size example.  So we must select a random selection of the
-        # examples.
-    #    idx = numpy.arange(len(test[0]))
-    #    numpy.random.shuffle(idx)
-    #    idx = idx[:test_size]
-    #    test = ([test[0][n] for n in idx], [test[1][n] for n in idx])
-
-    print numpy.max(train[1], axis=None)
     ydim = numpy.max(numpy.amax(train[1])) + 1
     ydim = 26 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
 
-    print 'Building model'
+    logging.info('Building model')
     # This create the initial parameters as numpy ndarrays.
     # Dict name (string) -> numpy ndarray
     params = init_params(model_options)
@@ -538,14 +523,12 @@ def train_lstm(
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
                                         x, mask, wmask, y, y_mask, cost)
 
-    print 'Optimization'
-
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
 
-    print "%d train examples" % len(train[0])
-    print "%d valid examples" % len(valid[0])
-    print "%d test examples" % len(test[0])
+    logging.info("%d train examples" % len(train[0]))
+    logging.info("%d valid examples" % len(valid[0]))
+    logging.info("%d test examples" % len(test[0]))
 
     history_errs = []
     best_p = None
@@ -553,8 +536,10 @@ def train_lstm(
 
     if validFreq == -1:
         validFreq = len(train[0]) / batch_size
+        logging.info("validFreq auto set to %d", validFreq)
     if saveFreq == -1:
         saveFreq = len(train[0]) / batch_size
+        logging.info("saveFreq auto set to %d", saveFreq)
 
     uidx = 0  # the number of update done
     estop = False  # early stop
@@ -580,20 +565,18 @@ def train_lstm(
                 x, mask, wmask, y, y_mask = prepare_data(x, y)
                 n_samples += x.shape[1]
 
-
-                #print y
                 cost = f_grad_shared(x, mask, wmask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
-                    print 'NaN detected'
+                    logging.error('NaN detected (bad cost)')
                     return 1., 1., 1.
 
                 if numpy.mod(uidx, dispFreq) == 0:
-                    print 'Epoch ', eidx, 'Update ', uidx, 'Cost ', cost
+                    logging.info('Epoch %d, Update %d, Cost %.4f', eidx, uidx, cost)
 
                 if saveto and numpy.mod(uidx, saveFreq) == 0:
-                    print 'Saving...',
+                    logging.info('Saving to %s', saveto)
 
                     if best_p is not None:
                         params = best_p
@@ -601,7 +584,7 @@ def train_lstm(
                         params = unzip(tparams)
                     numpy.savez(saveto, history_errs=history_errs, **params)
                     pkl.dump(model_options, open('%s.pkl' % saveto, 'wb'), -1)
-                    print 'Done'
+                    logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
                     use_noise.set_value(0.)
@@ -619,25 +602,25 @@ def train_lstm(
                         best_p = unzip(tparams)
                         bad_counter = 0
 
-                    print ('Train ', 100*(1-train_err), 'Valid ', 100*(1-valid_err),
-                           'Test ', 100*(1-test_err))
+                    logging.info("Train %.4f, Valid %.4f, Test %.4f",
+                                 100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
 
                     if (len(history_errs) > patience and
                         valid_err >= numpy.array(history_errs)[:-patience,
                                                                0].min()):
                         bad_counter += 1
                         if bad_counter > patience:
-                            print 'Early Stop!'
+                            logging.warn('Early Stop!')
                             estop = True
                             break
 
-            print 'Seen %d samples' % n_samples
+            logging.info('Seen %d samples', n_samples)
 
             if estop:
                 break
 
     except KeyboardInterrupt:
-        print "Training interupted"
+        logging.warn("Training interrupted")
 
     end_time = time.clock()
     if best_p is not None:
@@ -647,21 +630,22 @@ def train_lstm(
 
     use_noise.set_value(0.)
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    #pred_probs(f_pred_prob, prepare_data, test, kf_test)
-    #sys.exit(1)
     train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted)
     valid_err = pred_error(f_pred, prepare_data, valid, kf_valid)
     test_err = pred_error(f_pred, prepare_data, test, kf_test)
 
+    logging.info("Train %.4f, Valid %.4f, Test %.4f",
+                                     100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
 
-    print 'Train ', train_err, 'Valid ', valid_err, 'Test ', test_err
     if saveto:
+        logging.info("Saving to %s...", saveto)
         numpy.savez(saveto, train_err=train_err,
                     valid_err=valid_err, test_err=test_err,
                     history_errs=history_errs, **best_p)
-    print 'The code run for %d epochs, with %f sec/epochs' % (
+    logging.info('The code run for %d epochs, with %f sec/epochs',
         (eidx + 1), (end_time - start_time) / (1. * (eidx + 1)))
-    print >> sys.stderr, ('Training took %.1fs' %
+
+    logging.info('Training took %.1fs',
                           (end_time - start_time))
     return train_err, valid_err, test_err
 
