@@ -17,19 +17,11 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from util import get_minibatches_idx, numpy_floatX
 from modelio import load_pos_tagged_data, prepare_data
 
-from nn_support import pred_error, pred_probs
-
-import imdb
-
-datasets = {'imdb': (imdb.load_data, prepare_data)}
+from nn_support import pred_error
 
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
-
-def get_dataset(name):
-    return datasets[name][0], datasets[name][1]
-
 
 def zipp(params, tparams):
     """
@@ -504,8 +496,6 @@ def train_lstm(
     # Model options
     model_options = locals().copy()
     print "model options", model_options
-
-    load_data, prepare_data = get_dataset(dataset)
 
     # Load the training data
     print 'Loading data'
