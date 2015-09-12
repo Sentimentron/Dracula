@@ -14,7 +14,10 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from util import get_minibatches_idx, numpy_floatX
 from modelio import load_pos_tagged_data, prepare_data
 
+from nn_layers import *
+from nn_lstm import lstm_layer
 from nn_params import *
+from nn_optimizers import *
 from nn_support import pred_error
 from nn_serialization import zipp, unzip, load_params
 
@@ -22,209 +25,6 @@ from nn_serialization import zipp, unzip, load_params
 SEED = 123
 numpy.random.seed(SEED)
 
-def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None):
-    nsteps = state_below.shape[0]
-    if state_below.ndim == 3:
-        n_samples = state_below.shape[1]
-    else:
-        n_samples = 1
-
-    assert mask is not None
-
-    def _slice(_x, n, dim):
-        if _x.ndim == 3:
-            return _x[:, :, n * dim:(n + 1) * dim]
-        return _x[:, n * dim:(n + 1) * dim]
-
-    def _p(pp, name):
-        return '%s_%s' % (pp, name)
-
-    def _step(m_, x_, h_, c_):
-
-        preact = tensor.dot(h_, tparams[_p(prefix, 'U')])
-        preact += x_
-
-        i = tensor.nnet.sigmoid(_slice(preact, 0, options['dim_proj']))
-        f = tensor.nnet.sigmoid(_slice(preact, 1, options['dim_proj']))
-        o = tensor.nnet.sigmoid(_slice(preact, 2, options['dim_proj']))
-        c = tensor.tanh(_slice(preact, 3, options['dim_proj']))
-
-        c = f * c_ + i * c
-        c = m_[:, None] * c + (1. - m_)[:, None] * c_
-
-        h = o * tensor.tanh(c)
-        h = m_[:, None] * h + (1. - m_)[:, None] * h_
-
-        return h, c
-
-    state_below = (tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
-                   tparams[_p(prefix, 'b')])
-
-    dim_proj = options['dim_proj']
-    rval, updates = theano.scan(_step,
-                                sequences=[mask, state_below],
-                                outputs_info=[tensor.alloc(numpy_floatX(0.),
-                                                           n_samples,
-                                                           dim_proj),
-                                              tensor.alloc(numpy_floatX(0.),
-                                                           n_samples,
-                                                           dim_proj)],
-                                name=_p(prefix, '_layers'),
-                                n_steps=nsteps)
-    return rval[0]
-
-def sgd(lr, tparams, grads, x, mask, wmask, y, cost):
-    """ Stochastic Gradient Descent
-
-    :note: A more complicated version of sgd then needed.  This is
-        done like that for adadelta and rmsprop.
-
-    """
-    # New set of shared variable that will contain the gradient
-    # for a mini-batch.
-    gshared = [theano.shared(p.get_value() * 0., name='%s_grad' % k)
-               for k, p in tparams.iteritems()]
-    gsup = [(gs, g) for gs, g in zip(gshared, grads)]
-
-    # Function that computes gradients for a mini-batch, but do not
-    # updates the weights.
-    f_grad_shared = theano.function([x, mask, wmask, y], cost, updates=gsup,
-                                    name='sgd_f_grad_shared')
-
-    pup = [(p, p - lr * g) for p, g in zip(tparams.values(), gshared)]
-
-    # Function that updates the weights from the previously computed
-    # gradient.
-    f_update = theano.function([lr], [], updates=pup,
-                               name='sgd_f_update')
-
-    return f_grad_shared, f_update
-
-
-def adadelta(lr, tparams, grads, x, mask, wmask, y_mask, y, cost):
-    """
-    An adaptive learning rate optimizer
-
-    Parameters
-    ----------
-    lr : Theano SharedVariable
-        Initial learning rate
-    tpramas: Theano SharedVariable
-        Model parameters
-    grads: Theano variable
-        Gradients of cost w.r.t to parameres
-    x: Theano variable
-        Model inputs
-    mask: Theano variable
-        Sequence mask
-    y: Theano variable
-        Targets
-    cost: Theano variable
-        Objective fucntion to minimize
-
-    Notes
-    -----
-    For more information, see [ADADELTA]_.
-
-    .. [ADADELTA] Matthew D. Zeiler, *ADADELTA: An Adaptive Learning
-       Rate Method*, arXiv:1212.5701.
-    """
-
-    zipped_grads = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                  name='%s_grad' % k)
-                    for k, p in tparams.iteritems()]
-    running_up2 = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                 name='%s_rup2' % k)
-                   for k, p in tparams.iteritems()]
-    running_grads2 = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                    name='%s_rgrad2' % k)
-                      for k, p in tparams.iteritems()]
-
-    zgup = [(zg, g) for zg, g in zip(zipped_grads, grads)]
-    rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
-             for rg2, g in zip(running_grads2, grads)]
-
-    f_grad_shared = theano.function([x, mask, wmask, y_mask, y], cost, updates=zgup + rg2up,
-                                    name='adadelta_f_grad_shared', on_unused_input='warn')
-
-    updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
-             for zg, ru2, rg2 in zip(zipped_grads,
-                                     running_up2,
-                                     running_grads2)]
-    ru2up = [(ru2, 0.95 * ru2 + 0.05 * (ud ** 2))
-             for ru2, ud in zip(running_up2, updir)]
-    param_up = [(p, p + ud) for p, ud in zip(tparams.values(), updir)]
-
-    f_update = theano.function([lr], [], updates=ru2up + param_up,
-                               on_unused_input='ignore',
-                               name='adadelta_f_update')
-
-    return f_grad_shared, f_update
-
-
-def rmsprop(lr, tparams, grads, x, mask, wmask, y, cost):
-    """
-    A variant of  SGD that scales the step size by running average of the
-    recent step norms.
-
-    Parameters
-    ----------
-    lr : Theano SharedVariable
-        Initial learning rate
-    tpramas: Theano SharedVariable
-        Model parameters
-    grads: Theano variable
-        Gradients of cost w.r.t to parameres
-    x: Theano variable
-        Model inputs
-    mask: Theano variable
-        Sequence mask
-    y: Theano variable
-        Targets
-    cost: Theano variable
-        Objective fucntion to minimize
-
-    Notes
-    -----
-    For more information, see [Hint2014]_.
-
-    .. [Hint2014] Geoff Hinton, *Neural Networks for Machine Learning*,
-       lecture 6a,
-       http://cs.toronto.edu/~tijmen/csc321/slides/lecture_slides_lec6.pdf
-    """
-
-    zipped_grads = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                  name='%s_grad' % k)
-                    for k, p in tparams.iteritems()]
-    running_grads = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                   name='%s_rgrad' % k)
-                     for k, p in tparams.iteritems()]
-    running_grads2 = [theano.shared(p.get_value() * numpy_floatX(0.),
-                                    name='%s_rgrad2' % k)
-                      for k, p in tparams.iteritems()]
-
-    zgup = [(zg, g) for zg, g in zip(zipped_grads, grads)]
-    rgup = [(rg, 0.95 * rg + 0.05 * g) for rg, g in zip(running_grads, grads)]
-    rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
-             for rg2, g in zip(running_grads2, grads)]
-
-    f_grad_shared = theano.function([x, mask, wmask, y], cost,
-                                    updates=zgup + rgup + rg2up,
-                                    name='rmsprop_f_grad_shared')
-
-    updir = [theano.shared(p.get_value() * numpy_floatX(0.),
-                           name='%s_updir' % k)
-             for k, p in tparams.iteritems()]
-    updir_new = [(ud, 0.9 * ud - 1e-4 * zg / tensor.sqrt(rg2 - rg ** 2 + 1e-4))
-                 for ud, zg, rg, rg2 in zip(updir, zipped_grads, running_grads,
-                                            running_grads2)]
-    param_up = [(p, p + udn[1])
-                for p, udn in zip(tparams.values(), updir_new)]
-    f_update = theano.function([lr], [], updates=updir_new + param_up,
-                               on_unused_input='ignore',
-                               name='rmsprop_f_update')
-
-    return f_grad_shared, f_update
 
 
 def build_model(tparams, options):
@@ -247,98 +47,21 @@ def build_model(tparams, options):
     n_samples = x.shape[1]
     dim = options['dim_proj']
 
-    emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps,
-                                                n_samples,
-                                                options['dim_proj']])
+    emb = embeddings_layer(x, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj'])
+
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
 
-    # Mean pooling
-    proj = proj * mask[:, :, None] # Remove any extraneous predictions
+    proj = lstm_mask_layer(proj, mask)
 
-    avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
-    count_layer = tensor.alloc(0, 16, n_samples, dim)
-    fixed_ones  = tensor.ones_like(count_layer)
+    avg_per_word = per_word_averaging_layer(proj, wmask, n_samples, dim)
 
-    #ydim = options[ydim]
-    #y_default_tensor = tensor.allow(ydim,)
-    #y_default_tensor = tensor.inc_subtensor(y_default_tensor[0], 1)
+    pred = softmax_layer(avg_per_word, tparams['U'], tparams['b'], y_mask)
 
-    def set_value_at_position(location, output_model, count_model, fixed_ones, values):
-        print location.type, values.type, output_model.type
-        output_subtensor = output_model[location[0], location[2]]
-        count_subtensor = count_model[location[0], location[2]]
-        ones_subtensor = fixed_ones[location[0], location[2]]
-        values_subtensor = values[location[3], location[2]]
-        return tensor.inc_subtensor(output_subtensor, values_subtensor), tensor.inc_subtensor(count_subtensor, ones_subtensor)
-
-    (avg_layer, count_layer), _ = theano.foldl(fn=set_value_at_position,
-                         sequences=[wmask],
-                         outputs_info=[avg_layer, count_layer],
-                         non_sequences=[fixed_ones, proj]
-                         )
-
-#   result = theano.printing.Print("RESULT", attrs=["shape"])(result)
-#    avg_per_word = result.sum(axis=0, dtype=config.floatX).mean(axis=1)
-#   avg_per_word = result.mean(axis=1, dtype=config.floatX)
-#   avg_per_word = theano.printing.Print("AVG", attrs=["shape"])(avg_per_word)
-
-    #avg_layer = theano.printing.Print("AVG_LAYER", attrs=['shape'])(avg_layer)
-    count_layer_inverse = 1.0/count_layer
-    count_layer_mask = 1.0 - tensor.isinf(count_layer_inverse)
-    count_layer_mult = tensor.isinf(count_layer_inverse) + count_layer
-    #count_layer_mult = theano.printing.Print("COUNT_LAYER_MULT")(count_layer_mult)
-    #count_layer_mask = theano.printing.Print("COUNT_LAYER_MASK")(count_layer_mask)
-    avg_per_word = (avg_layer / count_layer_mult) * count_layer_mask
-    #avg_per_word = tensor.zeros_like(raw_avg_per_word)
-    #avg_per_word = theano.printing.Print("AVG_PER_WORD")(avg_per_word)
-
-#   proj = theano.printing.Print("PROJ")(proj)
-#   avg_per_word = theano.printing.Print("AVG")(avg_per_word)
-
-    #avg_per_word = tensor.set_subtensor(avg_per_word[y_mask.nonzero()], raw_avg_per_word[y_mask.nonzero()])
-
-    print avg_per_word.type, proj.type
-
-    #avg_per_word = theano.printing.Print("AVG_BEFORE")(avg_per_word)
-    #y_mask = theano.printing.Print("YMASK", attrs=["shape"])(y_mask)
-    #avg_per_word = tensor.set_subtensor(avg_per_word[y_mask[y_mask > 0].nonzero()], 0)
-    #avg_per_word = theano.printing.Print("AVG_AFTER")(avg_per_word)
-
-    #avg_per_word = tensor.dot(y_mask, avg_per_word)
-
-    raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tparams['U']) + tparams['b']),
-                          outputs_info=None,
-                          sequences=[avg_per_word, theano.tensor.arange(16)]
-                          )
-
-    #raw_pred = theano.printing.Print("PRED_BEFORE")(raw_pred)
-    pred = tensor.zeros_like(raw_pred)
-    pred = tensor.inc_subtensor(pred[:, :, 0], 1)
-    #pred = tensor.set_subtensor(pred[y_mask[0, :], y_mask[1, :]], raw_pred[y_mask[0, :], y_mask[1, :]])
-    pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
-    #pred = theano.printing.Print("PRED_AFTER", attrs=["shape"])(pred)
-
-    # Ones where we don't care are set to zero
-    # pred = tensor.dot(y_mask, pred)
-    #pred = tensor.nnet.softmax(tensor.dot(proj, tparams['U']) + tparams['b'])
-
-
-    #pred = theano.printing.Print("PRED")(pred)
     f_pred_prob = theano.function([x, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([x, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
-    off = 1e-8
-    if pred.dtype == 'float16':
-        off = 1e-6
-
     def cost_scan_i(i, j, free_var):
-    #    i = theano.printing.Print("i", attrs=["shape"])(i)
-    #    j = theano.printing.Print("j", attrs=["shape"])(j)
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
-
-#    cost, _ = theano.scan(fn=lambda i, j, free_variable: -tensor.log(i[tensor.arange(n_samples), j] + 1e-8),
- #                      outputs_info=None,
-#                       sequences=[pred, y, tensor.arange(n_samples)])
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
 
