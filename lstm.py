@@ -47,7 +47,7 @@ def build_model(tparams, options):
     n_samples = x.shape[1]
     dim = options['dim_proj']
 
-    emb = embeddings_layer(x, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj'])
+    emb = embeddings_layer(x, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
 

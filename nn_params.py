@@ -22,7 +22,7 @@ def init_params(options):
     # embedding
     randn = numpy.random.rand(options['n_words'],
                               options['dim_proj'])
-    params['Wemb'] = (0.01 * randn).astype(config.floatX)
+    params['Cemb'] = (0.01 * randn).astype(config.floatX)
     params = param_init_lstm(options,
                              params,
                              prefix="lstm")
