@@ -5,8 +5,9 @@
 """
 
 from collections import OrderedDict
-import numpy
+import logging
 
+import numpy
 import theano
 from theano import config
 
@@ -21,13 +22,25 @@ def init_params(options):
     params = OrderedDict()
 
     # Embedding setup
-    options['dim_proj'] = options['dim_proj_chars'] # TODO: add word-level embeddings
+    logging.debug("dim_proj_chars = %d, dim_proj_words = %d", options['dim_proj_chars'], options['dim_proj_words'])
+    options['dim_proj'] = options['dim_proj_chars'] + options['dim_proj_words']
+    logging.debug("dim_proj = %d", options['dim_proj'])
+
     randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
+
+    randn = numpy.random.rand(options['n_words'],
+                              options['dim_proj_words'])
+    params['Wemb'] = (0.01 * randn).astype(config.floatX)
+
+
     params = param_init_lstm(options,
                              params,
                              prefix="lstm")
+
+
+
     # classifier
     params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
                                             options['ydim']).astype(config.floatX)

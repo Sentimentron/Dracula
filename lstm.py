@@ -8,10 +8,9 @@ import logging
 import cPickle as pkl
 import time
 
-import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-from util import get_minibatches_idx, numpy_floatX
+from util import get_minibatches_idx
 from modelio import load_pos_tagged_data, prepare_data
 
 from nn_layers import *
@@ -33,8 +32,10 @@ def build_model(tparams, options):
     # Used for dropout.
     use_noise = theano.shared(numpy_floatX(0.))
 
-    x = tensor.matrix('x', dtype='int8')
-    x.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
+    xc = tensor.matrix('xc', dtype='int8')
+    xw = tensor.matrix('xw', dtype='int32')
+
+    xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
     mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     wmask = tensor.matrix('wmask', dtype='int8')
@@ -43,49 +44,55 @@ def build_model(tparams, options):
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     y_mask = tensor.matrix('y_mask', dtype='int8')
 
-    n_timesteps = x.shape[0]
-    n_samples = x.shape[1]
-    dim = options['dim_proj_chars']
+    n_timesteps = xc.shape[0]
+    n_samples = xc.shape[1]
 
-    emb = embeddings_layer(x, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj_chars'])
+    emb1 = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj_chars'])
+    emb2 = embeddings_layer(xw, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj_words'])
+
+    emb = tensor.concatenate([emb1, emb2], axis=2)
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
 
     proj = lstm_mask_layer(proj, mask)
 
-    avg_per_word = per_word_averaging_layer(proj, wmask, n_samples, dim)
+    avg_per_word = per_word_averaging_layer(proj, wmask, n_samples, options['dim_proj'])
 
     pred = softmax_layer(avg_per_word, tparams['U'], tparams['b'], y_mask)
 
-    f_pred_prob = theano.function([x, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([x, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred_prob = theano.function([xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
+
+    y = theano.printing.Print("y")(y)
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
 
     cost = cost.mean()
 
-    return use_noise, x, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
+    return use_noise, xc, xw, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
-    src_words, src_labels = [], []
-    val_words, val_labels = [], []
+    src_chars, src_words, src_labels = [], [], []
+    val_chars, val_words, val_labels = [], [], []
     fin = max(int(prop * len(src[0])), 1)
     print len(src[0]), prop, fin
-    for i, (l, p) in enumerate(zip(src[0], src[1])):
+    for i, ((c, w), l) in enumerate(zip(zip(src[0], src[1]), src[2])):
         if i < fin:
-            val_words.append(l)
-            val_labels.append(p)
+            val_chars.append(c)
+            val_words.append(w)
+            val_labels.append(l)
         else:
-            src_words.append(l)
-            src_labels.append(p)
-    return (src_words, src_labels), (val_words, val_labels)
+            src_chars.append(c)
+            src_words.append(w)
+            src_labels.append(l)
+    return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
     dim_proj_chars=12,  # character embedding dimension and LSTM number of hidden units.
-    dim_proj_words=128,
+    dim_proj_words=12,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -115,23 +122,23 @@ def train_lstm(
 
     # Load the training data
     print 'Loading data'
-    #train, valid, test = load_data(n_words=n_words, valid_portion=0.05,
-    #                               maxlen=maxlen)
     char_dict = {}
+    word_dict = {}
     pos_dict = {}
     # Pre-populate the dictionaries
-    load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, pos_dict)
-    load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, pos_dict)
+    load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
+    load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
     # Now load the data for real
-    train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, pos_dict)
+    train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
     train, valid = split_at(train, 0.05)
-    test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, pos_dict)
+    test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
 
-    ydim = numpy.max(numpy.amax(train[1])) + 1
+    ydim = numpy.max(numpy.amax(train[2])) + 1
     ydim = 26 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
+    model_options['n_words'] = len(word_dict)+1
 
     logging.info('Building model')
     # This create the initial parameters as numpy ndarrays.
@@ -147,7 +154,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (use_noise, x, mask, wmask,
+    (use_noise, xc, xw, mask, wmask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
 
     if decay_c > 0.:
@@ -157,14 +164,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([x, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([xc, xw, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([x, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([xc, xw, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        x, mask, wmask, y, y_mask, cost)
+                                        xc, xw, mask, wmask, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -199,16 +206,19 @@ def train_lstm(
                 use_noise.set_value(1.)
 
                 # Select the random examples for this minibatch
-                y = [train[1][t] for t in train_index]
-                x = [train[0][t]for t in train_index]
+                y = [train[2][t] for t in train_index]
+                x_c = [train[0][t] for t in train_index]
+                x_w = [train[1][t] for t in train_index]
 
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
-                x, mask, wmask, y, y_mask = prepare_data(x, y)
-                n_samples += x.shape[1]
+                xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y)
+                n_samples += xc.shape[1]
 
-                cost = f_grad_shared(x, mask, wmask, y, y_mask)
+                assert xc.shape == xw.shape
+
+                cost = f_grad_shared(xc, xw, mask, wmask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
