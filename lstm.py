@@ -1,7 +1,9 @@
 '''
-            e[:lengths[idx], idx] = l
 Build a tweet sentiment analyzer
 '''
+
+from argparse import ArgumentParser
+import logging
 
 from collections import OrderedDict
 import cPickle as pkl
@@ -18,28 +20,11 @@ from util import get_minibatches_idx, numpy_floatX
 from modelio import load_pos_tagged_data, prepare_data
 
 from nn_support import pred_error
+from nn_serialization import zipp, unzip, load_params
 
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
-
-def zipp(params, tparams):
-    """
-    When we reload the model. Needed for the GPU stuff.
-    """
-    for kk, vv in params.iteritems():
-        tparams[kk].set_value(vv)
-
-
-def unzip(zipped):
-    """
-    When we pickle the model. Needed for the GPU stuff.
-    """
-    new_params = OrderedDict()
-    for kk, vv in zipped.iteritems():
-        new_params[kk] = vv.get_value()
-    return new_params
-
 
 def dropout_layer(state_before, use_noise, trng):
     proj = tensor.switch(use_noise,
@@ -73,17 +58,6 @@ def init_params(options):
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
     return params
-
-
-def load_params(path, params):
-    pp = numpy.load(path)
-    for kk, vv in params.iteritems():
-        if kk not in pp:
-            raise Warning('%s is not in the archive' % kk)
-        params[kk] = pp[kk]
-
-    return params
-
 
 def init_tparams(params):
     tparams = OrderedDict()
@@ -693,8 +667,17 @@ def train_lstm(
 
 
 if __name__ == '__main__':
+
+    logging.basicConfig(level=logging.DEBUG)
+
+    a = ArgumentParser("Train/Evaluate the LSTM model")
+    a.add_argument("--model", help="Load an existing model")
+    a.add_argument("--max-epochs", type=int, default=100)
+
+    p = a.parse_args()
+
     # See function train for all possible parameter and there definition.
     train_lstm(
-        max_epochs=100,
-        test_size=500,
+        max_epochs=p.max_epochs,
+        reload_model=p.model
     )
