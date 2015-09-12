@@ -22,7 +22,7 @@ def init_params(options):
 
     # Embedding setup
     options['dim_proj'] = options['dim_proj_chars'] # TODO: add word-level embeddings
-    randn = numpy.random.rand(options['n_words'],
+    randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
     params = param_init_lstm(options,
