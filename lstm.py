@@ -73,12 +73,6 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None):
                                 n_steps=nsteps)
     return rval[0]
 
-
-# ff: Feed Forward (normal neural net), only useful to put after lstm
-#     before the classifier.
-layers = {'lstm': (param_init_lstm, lstm_layer)}
-
-
 def sgd(lr, tparams, grads, x, mask, wmask, y, cost):
     """ Stochastic Gradient Descent
 
