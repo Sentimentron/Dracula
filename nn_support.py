@@ -42,10 +42,11 @@ def pred_error(f_pred, prepare_data, data, iterator, maxlen=140):
     valid_err = []
     valid_shapes = []
     for _, valid_index in iterator:
-        x, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
-                                                 numpy.array(data[1])[valid_index],
+        xc, xw, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
+                                                 [data[1][t] for t in valid_index],
+                                                 numpy.array(data[2])[valid_index],
                                                  maxlen=maxlen)
-        preds = f_pred(x, mask, wmask, y_mask)
+        preds = f_pred(xc, xw, mask, wmask, y_mask)
         acc = numpy.equal(preds, y)
         valid_shapes.append(preds.shape[0] * preds.shape[1])
         valid_err.append(acc.sum())
