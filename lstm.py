@@ -5,88 +5,22 @@ Build a tweet sentiment analyzer
 from argparse import ArgumentParser
 import logging
 
-from collections import OrderedDict
 import cPickle as pkl
 import time
 
-import numpy
-import theano
-from theano import config
 import theano.tensor as tensor
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from util import get_minibatches_idx, numpy_floatX
 from modelio import load_pos_tagged_data, prepare_data
 
+from nn_params import *
 from nn_support import pred_error
 from nn_serialization import zipp, unzip, load_params
 
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
-
-def _p(pp, name):
-    return '%s_%s' % (pp, name)
-
-
-def init_params(options):
-    """
-    Global (not LSTM) parameter. For the embeding and the classifier.
-    """
-    params = OrderedDict()
-    # embedding
-    randn = numpy.random.rand(options['n_words'],
-                              options['dim_proj'])
-    params['Wemb'] = (0.01 * randn).astype(config.floatX)
-    params = get_layer(options['encoder'])[0](options,
-                                              params,
-                                              prefix=options['encoder'])
-    # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
-                                            options['ydim']).astype(config.floatX)
-    params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
-
-    return params
-
-def init_tparams(params):
-    tparams = OrderedDict()
-    for kk, pp in params.iteritems():
-        tparams[kk] = theano.shared(params[kk], name=kk)
-    return tparams
-
-
-def get_layer(name):
-    fns = layers[name]
-    return fns
-
-
-def ortho_weight(ndim):
-    W = numpy.random.randn(ndim, ndim)
-    u, s, v = numpy.linalg.svd(W)
-    return u.astype(config.floatX)
-
-
-def param_init_lstm(options, params, prefix='lstm'):
-    """
-    Init the LSTM parameter:
-
-    :see: init_params
-    """
-    W = numpy.concatenate([ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj'])], axis=1)
-    params[_p(prefix, 'W')] = W
-    U = numpy.concatenate([ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj'])], axis=1)
-    params[_p(prefix, 'U')] = U
-    b = numpy.zeros((4 * options['dim_proj'],))
-    params[_p(prefix, 'b')] = b.astype(config.floatX)
-
-    return params
-
 
 def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None):
     nsteps = state_below.shape[0]
@@ -102,7 +36,11 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None):
             return _x[:, :, n * dim:(n + 1) * dim]
         return _x[:, n * dim:(n + 1) * dim]
 
+    def _p(pp, name):
+        return '%s_%s' % (pp, name)
+
     def _step(m_, x_, h_, c_):
+
         preact = tensor.dot(h_, tparams[_p(prefix, 'U')])
         preact += x_
 
@@ -318,9 +256,7 @@ def build_model(tparams, options):
     emb = tparams['Wemb'][x.flatten()].reshape([n_timesteps,
                                                 n_samples,
                                                 options['dim_proj']])
-    proj = get_layer(options['encoder'])[1](tparams, emb, options,
-                                            prefix=options['encoder'],
-                                            mask=mask)
+    proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
 
     # Mean pooling
     proj = proj * mask[:, :, None] # Remove any extraneous predictions
