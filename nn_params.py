@@ -16,12 +16,14 @@ def _p(pp, name):
 
 def init_params(options):
     """
-    Global (not LSTM) parameter. For the embeding and the classifier.
+    Global (not LSTM) parameter. For the embedding and the classifier.
     """
     params = OrderedDict()
-    # embedding
+
+    # Embedding setup
+    options['dim_proj'] = options['dim_proj_chars'] # TODO: add word-level embeddings
     randn = numpy.random.rand(options['n_words'],
-                              options['dim_proj'])
+                              options['dim_proj_chars'])
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
     params = param_init_lstm(options,
                              params,
@@ -51,6 +53,7 @@ def param_init_lstm(options, params, prefix='lstm'):
 
     :see: init_params
     """
+
     W = numpy.concatenate([ortho_weight(options['dim_proj']),
                            ortho_weight(options['dim_proj']),
                            ortho_weight(options['dim_proj']),
