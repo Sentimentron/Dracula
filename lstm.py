@@ -7,7 +7,6 @@ import logging
 
 from collections import OrderedDict
 import cPickle as pkl
-import sys
 import time
 
 import numpy
@@ -25,16 +24,6 @@ from nn_serialization import zipp, unzip, load_params
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
-
-def dropout_layer(state_before, use_noise, trng):
-    proj = tensor.switch(use_noise,
-                         (state_before *
-                          trng.binomial(state_before.shape,
-                                        p=0.5, n=1,
-                                        dtype=state_before.dtype)),
-                         state_before * 0.5)
-    return proj
-
 
 def _p(pp, name):
     return '%s_%s' % (pp, name)
