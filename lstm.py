@@ -27,10 +27,7 @@ numpy.random.seed(SEED)
 
 
 def build_model(tparams, options):
-    trng = RandomStreams(SEED)
-
-    # Used for dropout.
-    use_noise = theano.shared(numpy_floatX(0.))
+    dropout_mask = tensor.matrix('dropout_mask', dtype=config.floatX)
 
     xc = tensor.matrix('xc', dtype='int8')
     xw = tensor.matrix('xw', dtype='int32')
@@ -58,10 +55,10 @@ def build_model(tparams, options):
 
     avg_per_word = per_word_averaging_layer(proj, wmask, n_samples, options['dim_proj'])
 
-    pred = softmax_layer(avg_per_word, tparams['U'], tparams['b'], y_mask)
+    pred = softmax_layer(dropout_mask, avg_per_word, tparams['U'], tparams['b'], y_mask)
 
-    f_pred_prob = theano.function([xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred_prob = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
@@ -72,7 +69,7 @@ def build_model(tparams, options):
 
     cost = cost.mean()
 
-    return use_noise, xc, xw, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
+    return dropout_mask, xc, xw, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
     src_chars, src_words, src_labels = [], [], []
@@ -91,8 +88,8 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=12,  # character embedding dimension and LSTM number of hidden units.
-    dim_proj_words=12,
+    dim_proj_chars=64,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_words=1024,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -154,7 +151,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (use_noise, xc, xw, mask, wmask,
+    (dropout_mask, xc, xw, mask, wmask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
 
     if decay_c > 0.:
@@ -164,14 +161,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([xc, xw, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([dropout_mask, xc, xw, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([xc, xw, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([dropout_mask, xc, xw, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        xc, xw, mask, wmask, y, y_mask, cost)
+                                        dropout_mask, xc, xw, mask, wmask, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -194,6 +191,9 @@ def train_lstm(
     uidx = 0  # the number of update done
     estop = False  # early stop
     start_time = time.clock()
+
+    trng = RandomStreams(123)
+
     try:
         for eidx in xrange(max_epochs):
             n_samples = 0
@@ -203,7 +203,9 @@ def train_lstm(
 
             for _, train_index in kf:
                 uidx += 1
-                use_noise.set_value(1.)
+                dropout_mask = numpy.random.binomial(1, 0.5, params['U'].shape).astype(theano.config.floatX)
+                assert numpy.max(dropout_mask) == 1.
+                assert numpy.min(dropout_mask) == 0.
 
                 # Select the random examples for this minibatch
                 y = [train[2][t] for t in train_index]
@@ -218,7 +220,7 @@ def train_lstm(
 
                 assert xc.shape == xw.shape
 
-                cost = f_grad_shared(xc, xw, mask, wmask, y, y_mask)
+                cost = f_grad_shared(dropout_mask, xc, xw, mask, wmask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
@@ -240,11 +242,11 @@ def train_lstm(
                     logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
-                    use_noise.set_value(0.)
-                    train_err = pred_error(f_pred, prepare_data, train, kf)
-                    valid_err = pred_error(f_pred, prepare_data, valid,
+                    dropout_mask = numpy.ones(params['U'].shape).astype(dtype=theano.config.floatX)
+                    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf)
+                    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid,
                                            kf_valid)
-                    test_err = pred_error(f_pred, prepare_data, test, kf_test)
+                    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test)
 
                     history_errs.append([valid_err, test_err])
 
@@ -281,11 +283,11 @@ def train_lstm(
     else:
         best_p = unzip(tparams)
 
-    use_noise.set_value(0.)
+    dropout_mask = numpy.ones(params['U'].shape, dtype=theano.config.floatX)
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted)
-    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid)
-    test_err = pred_error(f_pred, prepare_data, test, kf_test)
+    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf_train_sorted)
+    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid, kf_valid)
+    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test)
 
     logging.info("Train %.4f, Valid %.4f, Test %.4f",
                                      100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
@@ -309,7 +311,7 @@ if __name__ == '__main__':
 
     a = ArgumentParser("Train/Evaluate the LSTM model")
     a.add_argument("--model", help="Load an existing model")
-    a.add_argument("--max-epochs", type=int, default=100)
+    a.add_argument("--max-epochs", type=int, default=1000)
 
     p = a.parse_args()
 
