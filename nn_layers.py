@@ -67,7 +67,7 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
     return (avg_layer / count_layer_mult) * count_layer_mask
 
 
-def softmax_layer(avg_per_word, U, b, y_mask):
+def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask):
     """
     Produces the final labels via softmax
     :param avg_per_word: Output from word-averaging
@@ -77,7 +77,7 @@ def softmax_layer(avg_per_word, U, b, y_mask):
                     where the output is undefined, causing this thing to output the special 0 label (for "don't care")
     :return: Softmax predictions
     """
-    raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U) + b),
+    raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U * dropout_mask) + b),
                               outputs_info=None,
                               sequences=[avg_per_word, tensor.arange(16)]
                               )
