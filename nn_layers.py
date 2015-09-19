@@ -49,6 +49,8 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
     # HACK: just make this much larger than any value we're likely to encounter
     min_layer = tensor.alloc(numpy_floatX(10000.), 16, n_samples, dim)
     min_layer_comp = tensor.alloc(numpy_floatX(10000.), 16, n_samples, dim) # Used for masking
+    max_layer = tensor.alloc(numpy_floatX(-10000.), 16, n_samples, dim)
+    max_layer_comp = tensor.alloc(numpy_floatX(-10000.), 16, n_samples, dim) # Used for masking
     count_layer = tensor.alloc(0, 16, n_samples, dim)
     fixed_ones = tensor.ones_like(count_layer)
 
@@ -71,6 +73,16 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
                                         )
                                     )
 
+    def max_value_at_position(location, output_model, values):
+        output_subtensor = output_model[location[0], location[2]]
+        values_subtensor = values[location[3], location[2]]
+        return tensor.set_subtensor(output_subtensor,
+                                    tensor.switch(
+                                        tensor.gt(values_subtensor, output_subtensor),
+                                        values_subtensor, output_subtensor
+                                        )
+                                    )
+
     (avg_layer, count_layer), _ = theano.foldl(fn=set_value_at_position,
                                                sequences=[wmask],
                                                outputs_info=[avg_layer, count_layer],
@@ -81,14 +93,20 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
                                 outputs_info=[min_layer],
                                 non_sequences=[proj])
 
+    max_layer, _ = theano.foldl(fn=max_value_at_position,
+                                sequences=[wmask],
+                                outputs_info=[max_layer],
+                                non_sequences=[proj])
+
     min_layer = tensor.switch(tensor.eq(min_layer, min_layer_comp), zeros_layer, min_layer)
+    max_layer = tensor.switch(tensor.eq(max_layer, max_layer_comp), zeros_layer, max_layer)
 
     count_layer_inverse = 1.0 / count_layer
     count_layer_mask = 1.0 - tensor.isinf(count_layer_inverse)
     count_layer_mult = tensor.isinf(count_layer_inverse) + count_layer
     avg_layer = (avg_layer / count_layer_mult) * count_layer_mask
 
-    output = tensor.concatenate([avg_layer, min_layer], axis=2)
+    output = tensor.concatenate([avg_layer, min_layer, max_layer], axis=2)
     return output
 
 
