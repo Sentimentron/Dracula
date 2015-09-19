@@ -14,7 +14,7 @@ from util import get_minibatches_idx
 from modelio import load_pos_tagged_data, prepare_data
 
 from nn_layers import *
-from nn_lstm import lstm_layer
+from nn_lstm import lstm_layer, lstm_unmasked_layer
 from nn_params import *
 from nn_optimizers import *
 from nn_support import pred_error
@@ -50,12 +50,13 @@ def build_model(tparams, options):
     emb = tensor.concatenate([emb1, emb2], axis=2)
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
-
     proj = lstm_mask_layer(proj, mask)
 
     avg_per_word = per_word_averaging_layer(proj, wmask, n_samples, options['dim_proj'])
 
-    pred = softmax_layer(dropout_mask, avg_per_word, tparams['U'], tparams['b'], y_mask)
+    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words")
+
+    pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask)
 
     f_pred_prob = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
