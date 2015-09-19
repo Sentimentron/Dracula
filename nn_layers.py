@@ -43,14 +43,13 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
     :param dim: size of word-embeddings
     :return: per-word average of all character embeddings.
     """
+
     # Used for masking only
     zeros_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
     avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
     # HACK: just make this much larger than any value we're likely to encounter
-    min_layer = tensor.alloc(numpy_floatX(10000.), 16, n_samples, dim)
-    min_layer_comp = tensor.alloc(numpy_floatX(10000.), 16, n_samples, dim) # Used for masking
-    max_layer = tensor.alloc(numpy_floatX(-10000.), 16, n_samples, dim)
-    max_layer_comp = tensor.alloc(numpy_floatX(-10000.), 16, n_samples, dim) # Used for masking
+    min_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
+    max_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
     count_layer = tensor.alloc(0, 16, n_samples, dim)
     fixed_ones = tensor.ones_like(count_layer)
 
@@ -66,22 +65,13 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
     def min_value_at_position(location, output_model, values):
         output_subtensor = output_model[location[0], location[2]]
         values_subtensor = values[location[3], location[2]]
-        return tensor.set_subtensor(output_subtensor,
-                                    tensor.switch(
-                                        tensor.lt(values_subtensor, output_subtensor),
-                                        values_subtensor, output_subtensor
-                                        )
-                                    )
+
+        return tensor.set_subtensor(output_subtensor, tensor.minimum(output_subtensor, values_subtensor))
 
     def max_value_at_position(location, output_model, values):
         output_subtensor = output_model[location[0], location[2]]
         values_subtensor = values[location[3], location[2]]
-        return tensor.set_subtensor(output_subtensor,
-                                    tensor.switch(
-                                        tensor.gt(values_subtensor, output_subtensor),
-                                        values_subtensor, output_subtensor
-                                        )
-                                    )
+        return tensor.set_subtensor(output_subtensor, tensor.maximum(output_subtensor, values_subtensor))
 
     (avg_layer, count_layer), _ = theano.foldl(fn=set_value_at_position,
                                                sequences=[wmask],
@@ -97,9 +87,6 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
                                 sequences=[wmask],
                                 outputs_info=[max_layer],
                                 non_sequences=[proj])
-
-    min_layer = tensor.switch(tensor.eq(min_layer, min_layer_comp), zeros_layer, min_layer)
-    max_layer = tensor.switch(tensor.eq(max_layer, max_layer_comp), zeros_layer, max_layer)
 
     count_layer_inverse = 1.0 / count_layer
     count_layer_mask = 1.0 - tensor.isinf(count_layer_inverse)
