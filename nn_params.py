@@ -42,7 +42,7 @@ def init_params(options):
 
 
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
+    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*2,
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
