@@ -27,22 +27,24 @@ def init_params(options):
     logging.debug("dim_proj = %d", options['dim_proj'])
 
     randn = numpy.random.rand(options['n_chars'],
-                              options['dim_proj_chars'])
+                              options['dim_proj_chars'])*2 - 1
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
 
     randn = numpy.random.rand(options['n_words'],
                               options['dim_proj_words'])
-    params['Wemb'] = (0.01 * randn).astype(config.floatX)
+    params['Wemb'] = (0.01 * randn).astype(config.floatX)*2 - 1
 
 
     params = param_init_lstm(options,
                              params,
                              prefix="lstm")
 
-
+    params = param_init_lstm(options,
+                             params,
+                             prefix="lstm_words")
 
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*3,
+    params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
@@ -60,24 +62,24 @@ def ortho_weight(ndim):
     return u.astype(config.floatX)
 
 
-def param_init_lstm(options, params, prefix='lstm'):
+def param_init_lstm(options, params, prefix='lstm', mult=1):
     """
     Init the LSTM parameter:
 
     :see: init_params
     """
 
-    W = numpy.concatenate([ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj'])], axis=1)
+    W = numpy.concatenate([ortho_weight(options['dim_proj']*mult),
+                           ortho_weight(options['dim_proj']*mult),
+                           ortho_weight(options['dim_proj']*mult),
+                           ortho_weight(options['dim_proj']*mult)], axis=1)
     params[_p(prefix, 'W')] = W
-    U = numpy.concatenate([ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj']),
-                           ortho_weight(options['dim_proj'])], axis=1)
+    U = numpy.concatenate([ortho_weight(options['dim_proj']*mult),
+                           ortho_weight(options['dim_proj']*mult),
+                           ortho_weight(options['dim_proj']*mult),
+                           ortho_weight(options['dim_proj']*mult)], axis=1)
     params[_p(prefix, 'U')] = U
-    b = numpy.zeros((4 * options['dim_proj'],))
+    b = numpy.zeros((4 * options['dim_proj'] * mult,))
     params[_p(prefix, 'b')] = b.astype(config.floatX)
 
     return params
