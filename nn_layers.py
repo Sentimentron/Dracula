@@ -3,6 +3,7 @@
 """
 
 import theano
+import numpy as np
 from theano import tensor
 from util import numpy_floatX
 
@@ -42,7 +43,12 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
     :param dim: size of word-embeddings
     :return: per-word average of all character embeddings.
     """
+    # Used for masking only
+    zeros_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
     avg_layer = tensor.alloc(numpy_floatX(0.), 16, n_samples, dim)
+    # HACK: just make this much larger than any value we're likely to encounter
+    min_layer = tensor.alloc(numpy_floatX(10000.), 16, n_samples, dim)
+    min_layer_comp = tensor.alloc(numpy_floatX(10000.), 16, n_samples, dim) # Used for masking
     count_layer = tensor.alloc(0, 16, n_samples, dim)
     fixed_ones = tensor.ones_like(count_layer)
 
@@ -55,16 +61,35 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
         return tensor.inc_subtensor(output_subtensor, values_subtensor), \
                tensor.inc_subtensor(count_subtensor, ones_subtensor)
 
+    def min_value_at_position(location, output_model, values):
+        output_subtensor = output_model[location[0], location[2]]
+        values_subtensor = values[location[3], location[2]]
+        return tensor.set_subtensor(output_subtensor,
+                                    tensor.switch(
+                                        tensor.lt(values_subtensor, output_subtensor),
+                                        values_subtensor, output_subtensor
+                                        )
+                                    )
+
     (avg_layer, count_layer), _ = theano.foldl(fn=set_value_at_position,
                                                sequences=[wmask],
                                                outputs_info=[avg_layer, count_layer],
                                                non_sequences=[fixed_ones, proj]
                                                )
+    min_layer, _ = theano.foldl(fn=min_value_at_position,
+                                sequences=[wmask],
+                                outputs_info=[min_layer],
+                                non_sequences=[proj])
+
+    min_layer = tensor.switch(tensor.eq(min_layer, min_layer_comp), zeros_layer, min_layer)
 
     count_layer_inverse = 1.0 / count_layer
     count_layer_mask = 1.0 - tensor.isinf(count_layer_inverse)
     count_layer_mult = tensor.isinf(count_layer_inverse) + count_layer
-    return (avg_layer / count_layer_mult) * count_layer_mask
+    avg_layer = (avg_layer / count_layer_mult) * count_layer_mask
+
+    output = tensor.concatenate([avg_layer, min_layer], axis=2)
+    return output
 
 
 def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask):

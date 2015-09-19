@@ -36,7 +36,7 @@ def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}):
                 if pos not in posdict:
                     posdict[pos] = len(posdict)+1
             cur_labels.append(posdict[pos])
-            cur_words.append(0)
+            cur_words.append(worddict[word])
             cur_chars.append(0)
 
     if len(cur_chars) > 0:
