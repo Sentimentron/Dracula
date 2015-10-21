@@ -18,14 +18,19 @@ def process_cmd_line():
     """Read command line arguments"""
     p = ArgumentParser("Download and pre-process command line arguments")
     p.add_argument("--brown", action="store_true")
-    p.add_argument("--tweebo", action="store_true")
 
     args = p.parse_args()
 
-    if not args.brown and not args.tweebo:
+    if not args.brown:
         raise ValueError("No corpora specified (see --usage)")
 
     return args
+
+#BROWN_TAG_DICT = {
+#    'AT' : 'D', # Determiner, i.e. 'THE'
+#    'NP-TL': 'Z', # Proper noun i.e. 'FULTON'
+#    ''
+#}
 
 def process_brown():
     """Read, convert and save the Brown corpus"""
@@ -38,73 +43,132 @@ def process_brown():
     with open("Data/brown.pkl", "w") as fout:
         pickle.dump(tags, fout, pickle.HIGHEST_PROTOCOL)
 
-def process_tweebo():
-    """Read, convert and save the Tweebo corpus"""
-    download_file(TWEEBO_DAILY547_DL, "Data/TweeboDaily547.conll")
-    download_file(TWEEBO_OCT27_DL, "Data/TweeboOct27.conll")
+def process_brown():
+    """
+    Convert the Brown corpus tags into CONLL, substituting the
+    native tags for something that would be roughly equivalent
+    in the TweeboPOS corpus
+    """
 
-    def interpret_conll(path):
+    def convert_tag(tag):
         """
-        Read a CONLL file line-by-line and export the tags
-        :param path: The path of the file
-        :return: A list of Tag objects.
+            Converts a Brown corpus tag into a TweeboParse one.
+
         """
-        logging.info("Reading %s...", path)
-        ret = []
-        tweebo = ['N', 'O', '^', 'S', 'Z', 'V', 'L',
-                  'M', 'A', 'R', '!', 'D', 'P', '&',
-                  'T', 'X', 'Y', '#', '@', '~', 'U',
-                  'E', '$', ',', 'G']
-        ref = [u'NOUN', u'PRON', 'NOUN', 'DET', 'NOUN',
-               'VERB', '']
-        tagmap = {
-            'N': u'NOUN',
-            'O': u'PRON',
-            '^': u'NOUN',
-            'S': u'X',
-            'Z': u'NOUN',
-            'V': u'VERB',
-            'L': u'PRON',
-            'M': u'NOUN',
-            'A': u'ADJ',
-            'R': u'ADV',
-            '!': u'.',
-            'D': u'DET',
-            'P': u'CONJ',
-            '&': u'CONJ',
-            'T': u'PRT',
-            'X': u'DET',
-            'Y': u'DET',
-            '#': u'X',
-            '@': u'NOUN',
-            '~': u'X',
-            'U': u'X',
-            'E': u'.',
-            '$': u'NUM',
-            ',': u'.',
-            'G': u'X'
-        }
-        with open(path, 'r') as fp:
-            for line in fp:
-                line = line.strip()
-                if len(line) == 0:
-                    continue
-                line = line.split()
-                word, raw = line
-                t = Tag(word, tagmap[raw])
-                ret.append(t)
-        return ret
+        if tag[0] == "*":
+            # Negator, like NOT
+            return "R"
+        elif "AB" in tag:
+            return "D"
+        elif "AP" in tag:
+            return "D"
+        elif "AT" in tag:
+            return "D"
+        elif 'B' == tag[0]:
+            return "V"
+        elif tag[0:2] == "CC":
+            return "&"
+        elif tag[0:2] == "CS":
+            return "P"
+        elif tag[0:2] == "CD":
+            return "$"
+        elif tag == "CS":
+            return "P"
+        elif "DO" == tag[0:2]:
+            return "V"
+        elif "DT" == tag[0:2]:
+            return "D"
+        elif tag[0:2] == "EX":
+            return "X"
+        elif tag[0:2] == "FW":
+            return "G"
+        elif tag[0:2] == "HV":
+            return "V"
+        elif tag[0:2] == "IN": # Preposition
+            return "P"
+        elif tag[0:2] == "JJ":
+            return "J"
+        elif tag[0:2] == "MD":
+            return "V"
+        elif tag[0:2] == "NN":
+            if tag == "NN+DNZ":
+                return "S"
+            elif tag == "NP+":
+                return "Z"
+            return "N"
+        elif tag[0:2] == "NR":
+            # Noun, singular, adverbial (e.g. downtown, Friday)
+            return "^"
+        elif tag[0:2] == "NP":
+            return "^"
+        elif tag[0:2] == "OP":
+            return "$"
+        elif tag[0:2] == "OD":
+            return "$"
+        elif tag[0:2] == "PN":
+            if tag == "PN+":
+                return "L"
+            return "O"
+        elif tag[0:3] == "PPL":
+            return "O"
+        elif tag[0:3] == "PPS":
+            return "O"
+        elif tag[0:3] == "PP$":
+            return "O"
+        elif tag[0:4] == "PP$$":
+            return "O"
+        elif tag == "PPS+":
+            return "L"
+        elif tag[0:3] == "PPO":
+            return "O"
+        elif tag[0:2] == "QL":
+            return "R"
+        elif tag[0:2] == "RB":
+            # Adverb, comparative (e.g better)
+            return "R"
+        elif tag[0:2] == "RN":
+            return "R"
+        elif tag[0:2] == "RP":
+            # Verb particle
+            return "T"
+        elif tag[0:2] == "TO":
+            return "P"
+        elif tag[0:2] == "UH":
+            return "!"
+        elif tag[0] == "V":
+            return "V"
+        elif tag[0:3] == "WDT":
+            return "D"
+        elif tag == "WQL":
+            return "R"
+        elif tag[0:2] == "WP":
+            return "O"
+        elif tag[0:3] == "WRB":
+            return "R"
+        elif tag in [",", "--", ".", ":", "(", ")", "''", '``', '\'']:
+            return ","
+        elif "," in tag:
+            return ","
+        elif "(" in tag:
+            return ","
+        elif ")" in tag:
+            return ","
+        elif ":" in tag:
+            return ","
+        elif "." in tag:
+            return ","
+        elif "-" in tag:
+            return ","
+        elif tag == "NIL":
+            return "G"
+        else:
+            raise ValueError("Could not translate: " + tag)
 
-    d547 = interpret_conll("Data/TweeboDaily547.conll")
-    o24 = interpret_conll("Data/TweeboOct27.conll")
-
-    with open('Data/TweeboDaily547.pkl', 'w') as fout:
-        logging.info("Saving daily...")
-        pickle.dump(d547, fout, pickle.HIGHEST_PROTOCOL)
-
-    with open('Data/TweeboOct27.pkl', 'w') as fout:
-        logging.info("Saving Oct...")
-        pickle.dump(o24, fout, pickle.HIGHEST_PROTOCOL)
+    logging.info("Reading Brown corpus....")
+    for sentence in nltk.corpus.brown.tagged_sents():
+        for word, tag in sentence:
+            print "%s\t%s" % (word, convert_tag(tag))
+        print ''
 
 
 def main():
@@ -117,8 +181,7 @@ def main():
 
     if args.brown:
         process_brown()
-    if args.tweebo:
-        process_tweebo()
+
 
 if __name__ == "__main__":
     main()
