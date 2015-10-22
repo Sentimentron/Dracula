@@ -112,24 +112,39 @@ def train_lstm(
                        # This frequently need a bigger model.
     reload_model=None,  # Path to a saved model we want to start from.
     test_size=-1,  # If >0, we keep only this number of test example.
+    pretrain = None, # If not None, load some data from this argument
+    # Use to keep track of feature enumeration
+    char_dict = {},
+    word_dict = {},
+    pos_dict = {},
 ):
 
     # Model options
     model_options = locals().copy()
     print "model options", model_options
 
+    if reload_model:
+        load_params('lstm_model.npz', model_options)
+        char_dict = model_options['char_dict']
+        word_dict = model_options['word_dict']
+        pos_dict = model_options['pos_dict']
+
     # Load the training data
     print 'Loading data'
-    char_dict = {}
-    word_dict = {}
-    pos_dict = {}
-    # Pre-populate the dictionaries
-    load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
-    load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
-    # Now load the data for real
-    train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
-    train, valid = split_at(train, 0.05)
-    test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+    if pretrain is None:
+        # Pre-populate the dictionaries
+        load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
+        load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+        # Now load the data for real
+        train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
+        train, valid = split_at(train, 0.05)
+        test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+    else:
+        # Pre-populate
+        load_pos_tagged_data(pretrain, char_dict, word_dict, pos_dict)
+        test = load_pos_tagged_data(pretrain, char_dict, word_dict, pos_dict)
+        train, valid = split_at(test, 0.05)
+        batch_size = 100
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
     ydim = 26 # Hard-code, one that appears in the testing set, not in the training set
@@ -138,13 +153,15 @@ def train_lstm(
     model_options['n_chars'] = len(char_dict)+1
     model_options['n_words'] = len(word_dict)+1
 
-    logging.info('Building model')
+    model_options['word_dict'] = word_dict
+    model_options['char_dict'] = char_dict
+    model_options['pos_dict'] = pos_dict
+
     # This create the initial parameters as numpy ndarrays.
     # Dict name (string) -> numpy ndarray
     params = init_params(model_options)
 
-    if reload_model:
-        load_params('lstm_model.npz', params)
+    logging.info('Building model')
 
     # This create Theano Shared Variable from the parameters.
     # Dict name (string) -> Theano Tensor Shared Variable
@@ -313,11 +330,13 @@ if __name__ == '__main__':
     a = ArgumentParser("Train/Evaluate the LSTM model")
     a.add_argument("--model", help="Load an existing model")
     a.add_argument("--max-epochs", type=int, default=1000)
+    a.add_argument("--pretrain", help="Divide a 90-10 training/eval thing")
 
     p = a.parse_args()
 
     # See function train for all possible parameter and there definition.
     train_lstm(
         max_epochs=p.max_epochs,
-        reload_model=p.model
+        reload_model=p.model,
+        pretrain=p.pretrain
     )
