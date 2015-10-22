@@ -112,7 +112,7 @@ def train_lstm(
                        # This frequently need a bigger model.
     reload_model=None,  # Path to a saved model we want to start from.
     test_size=-1,  # If >0, we keep only this number of test example.
-    pretrain = None, # If not None, load some data from this argument
+    pretrain = False, # If True, load some data from this argument
     # Use to keep track of feature enumeration
     char_dict = {},
     word_dict = {},
@@ -131,18 +131,19 @@ def train_lstm(
 
     # Load the training data
     print 'Loading data'
-    if pretrain is None:
-        # Pre-populate the dictionaries
-        load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
-        load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+    # Pre-populate the dictionaries
+    load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
+    load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
+    load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+    if not pretrain:
+
         # Now load the data for real
         train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
         train, valid = split_at(train, 0.05)
         test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
     else:
         # Pre-populate
-        load_pos_tagged_data(pretrain, char_dict, word_dict, pos_dict)
-        test = load_pos_tagged_data(pretrain, char_dict, word_dict, pos_dict)
+        test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
         train, valid = split_at(test, 0.05)
         batch_size = 100
 
@@ -330,7 +331,7 @@ if __name__ == '__main__':
     a = ArgumentParser("Train/Evaluate the LSTM model")
     a.add_argument("--model", help="Load an existing model")
     a.add_argument("--max-epochs", type=int, default=1000)
-    a.add_argument("--pretrain", help="Divide a 90-10 training/eval thing")
+    a.add_argument("--pretrain", help="Divide a 90-10 training/eval thing", action="store_true")
 
     p = a.parse_args()
 
