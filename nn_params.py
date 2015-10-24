@@ -15,7 +15,7 @@ from theano import config
 def _p(pp, name):
     return '%s_%s' % (pp, name)
 
-def init_params(options):
+def init_params(options, reloaded=False):
     """
     Global (not LSTM) parameter. For the embedding and the classifier.
     """
@@ -26,6 +26,17 @@ def init_params(options):
     options['dim_proj'] = options['dim_proj_chars']# + options['dim_proj_words']
     logging.debug("dim_proj = %d", options['dim_proj'])
 
+    nparams = generate_init_params(options, params)
+
+    if not reloaded:
+        return nparams
+    else:
+        for k in nparams:
+            nparams[k] = options[k]
+        logging.debug("%s", nparams.keys())
+        return nparams
+
+def generate_init_params(options, params):
     randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])*2 - 1
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
