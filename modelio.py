@@ -46,7 +46,7 @@ def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}):
 
     return chars, words, labels
 
-def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
+def prepare_data(char_seqs, labels, maxlen=None):
     """
     Create the matrices from the datasets.
 
@@ -66,19 +66,16 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
 
     if maxlen is not None:
         new_char_seqs = []
-        new_word_seqs = []
         new_labels = []
         new_lengths = []
-        for l, (s_c, s_w), y in zip(lengths, zip(char_seqs, word_seqs), labels):
+        for l, s_c, y in zip(lengths, char_seqs, labels):
             if l < maxlen:
                 new_char_seqs.append(s_c)
-                new_word_seqs.append(s_w)
                 new_labels.append(y)
                 new_lengths.append(l)
         lengths = new_lengths
         labels = new_labels
         char_seqs = new_char_seqs
-        word_seqs = new_word_seqs
 
         if len(lengths) < 1:
             return None, None, None
@@ -87,17 +84,15 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
     maxlen = numpy.max(lengths)
 
     x_c = numpy.zeros((maxlen, n_samples)).astype('int8')
-    x_w = numpy.zeros((maxlen, n_samples)).astype('int32')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
     words_mask = []
     y = numpy.zeros((16, n_samples)).astype('int8')
     y_mask = numpy.zeros((16, n_samples)).astype('int8')
-    for idx, (s_c, s_w, l) in enumerate(zip(char_seqs, word_seqs, labels)):
+    for idx, (s_c, l) in enumerate(zip(char_seqs, labels)):
         # idx is the current position in the mini-batch
         # s is a list of characters
         # l is a list of labels
         x_c[:lengths[idx], idx] = s_c
-        x_w[:lengths[idx], idx] = s_w
         x_mask[:lengths[idx], idx] = 1.
 
         c = 0
@@ -120,4 +115,4 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
 
     words_mask = numpy.asarray(words_mask, dtype='int8')
 
-    return x_c, x_w, x_mask, words_mask, y, y_mask
+    return x_c, x_mask, words_mask, y, y_mask

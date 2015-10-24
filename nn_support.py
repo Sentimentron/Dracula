@@ -42,11 +42,10 @@ def pred_error(dropout_mask, f_pred, prepare_data, data, iterator, maxlen=140):
     valid_err = []
     valid_shapes = []
     for _, valid_index in iterator:
-        xc, xw, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
-                                                 [data[1][t] for t in valid_index],
+        xc, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
                                                  numpy.array(data[2])[valid_index],
                                                  maxlen=maxlen)
-        preds = f_pred(dropout_mask, xc, xw, mask, wmask, y_mask)
+        preds = f_pred(dropout_mask, xc, mask, wmask, y_mask)
         acc = numpy.equal(preds, y)
         valid_shapes.append(preds.shape[0] * preds.shape[1])
         valid_err.append(acc.sum())

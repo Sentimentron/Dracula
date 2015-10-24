@@ -3,7 +3,6 @@ Build a tweet sentiment analyzer
 '''
 
 from argparse import ArgumentParser
-import logging
 
 import cPickle as pkl
 import time
@@ -30,7 +29,6 @@ def build_model(tparams, options):
     dropout_mask = tensor.matrix('dropout_mask', dtype=config.floatX)
 
     xc = tensor.matrix('xc', dtype='int8')
-    xw = tensor.matrix('xw', dtype='int32')
 
     xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
@@ -44,10 +42,7 @@ def build_model(tparams, options):
     n_timesteps = xc.shape[0]
     n_samples = xc.shape[1]
 
-    emb1 = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj_chars'])
-    emb2 = embeddings_layer(xw, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj_words'])
-
-    emb = tensor.concatenate([emb1, emb2], axis=2)
+    emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj_chars'])
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
     proj = lstm_mask_layer(proj, mask)
@@ -58,8 +53,8 @@ def build_model(tparams, options):
 
     pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask)
 
-    f_pred_prob = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred_prob = theano.function([dropout_mask, xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([dropout_mask, xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
@@ -70,7 +65,7 @@ def build_model(tparams, options):
 
     cost = cost.mean()
 
-    return dropout_mask, xc, xw, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
+    return dropout_mask, xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
     src_chars, src_words, src_labels = [], [], []
@@ -126,7 +121,7 @@ def train_lstm(
     if reload_model:
         load_params('lstm_model.npz', model_options)
         char_dict = model_options['char_dict']
-        word_dict = model_options['word_dict']
+        #word_dict = model_options['word_dict']
         pos_dict = model_options['pos_dict']
 
     # Load the training data
@@ -148,13 +143,13 @@ def train_lstm(
         batch_size = 100
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
-    ydim = 26 # Hard-code, one that appears in the testing set, not in the training set
+    ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
     model_options['n_words'] = len(word_dict)+1
 
-    model_options['word_dict'] = word_dict
+    #model_options['word_dict'] = word_dict
     model_options['char_dict'] = char_dict
     model_options['pos_dict'] = pos_dict
 
@@ -170,7 +165,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (dropout_mask, xc, xw, mask, wmask,
+    (dropout_mask, xc, mask, wmask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
 
     if decay_c > 0.:
@@ -180,14 +175,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([dropout_mask, xc, xw, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([dropout_mask, xc, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([dropout_mask, xc, xw, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([dropout_mask, xc, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        dropout_mask, xc, xw, mask, wmask, y, y_mask, cost)
+                                        dropout_mask, xc, mask, wmask, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -229,17 +224,14 @@ def train_lstm(
                 # Select the random examples for this minibatch
                 y = [train[2][t] for t in train_index]
                 x_c = [train[0][t] for t in train_index]
-                x_w = [train[1][t] for t in train_index]
 
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
-                xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y)
+                xc, mask, wmask, y, y_mask = prepare_data(x_c, y)
                 n_samples += xc.shape[1]
 
-                assert xc.shape == xw.shape
-
-                cost = f_grad_shared(dropout_mask, xc, xw, mask, wmask, y, y_mask)
+                cost = f_grad_shared(dropout_mask, xc, mask, wmask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):

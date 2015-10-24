@@ -23,16 +23,16 @@ def init_params(options):
 
     # Embedding setup
     logging.debug("dim_proj_chars = %d, dim_proj_words = %d", options['dim_proj_chars'], options['dim_proj_words'])
-    options['dim_proj'] = options['dim_proj_chars'] + options['dim_proj_words']
+    options['dim_proj'] = options['dim_proj_chars']# + options['dim_proj_words']
     logging.debug("dim_proj = %d", options['dim_proj'])
 
     randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])*2 - 1
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
 
-    randn = numpy.random.rand(options['n_words'],
-                              options['dim_proj_words'])
-    params['Wemb'] = (0.01 * randn).astype(config.floatX)*2 - 1
+    #randn = numpy.random.rand(options['n_words'],
+    #                          options['dim_proj_words'])
+    #params['Wemb'] = (0.01 * randn).astype(config.floatX)*2 - 1
 
 
     params = param_init_lstm(options,

@@ -38,7 +38,7 @@ def sgd(lr, tparams, grads, x_c, x_w, mask, wmask, y, cost):
     return f_grad_shared, f_update
 
 
-def adadelta(lr, tparams, grads, dropout_mask, x_c, x_w, mask, wmask, y_mask, y, cost):
+def adadelta(lr, tparams, grads, dropout_mask, x_c, mask, wmask, y_mask, y, cost):
     """
     An adaptive learning rate optimizer
 
@@ -81,7 +81,7 @@ def adadelta(lr, tparams, grads, dropout_mask, x_c, x_w, mask, wmask, y_mask, y,
     rg2up = [(rg2, 0.95 * rg2 + 0.05 * (g ** 2))
              for rg2, g in zip(running_grads2, grads)]
 
-    f_grad_shared = theano.function([dropout_mask, x_c, x_w, mask, wmask, y_mask, y], cost, updates=zgup + rg2up,
+    f_grad_shared = theano.function([dropout_mask, x_c, mask, wmask, y_mask, y], cost, updates=zgup + rg2up,
                                     name='adadelta_f_grad_shared', on_unused_input='warn')
 
     updir = [-tensor.sqrt(ru2 + 1e-6) / tensor.sqrt(rg2 + 1e-6) * zg
