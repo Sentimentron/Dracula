@@ -123,7 +123,7 @@ def train_lstm(
     model_options = locals().copy()
     print "model options", model_options
 
-    if reload_model:
+    if reload_model is not None:
         load_params('lstm_model.npz', model_options)
         char_dict = model_options['char_dict']
         word_dict = model_options['word_dict']
@@ -136,7 +136,6 @@ def train_lstm(
     load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
     load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
     if not pretrain:
-
         # Now load the data for real
         train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
         train, valid = split_at(train, 0.05)
@@ -160,7 +159,7 @@ def train_lstm(
 
     # This create the initial parameters as numpy ndarrays.
     # Dict name (string) -> numpy ndarray
-    params = init_params(model_options)
+    params = init_params(model_options, reload_model is not None)
 
     logging.info('Building model')
 
