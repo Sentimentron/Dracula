@@ -48,10 +48,10 @@ def per_word_averaging_layer(proj, wmask, n_samples, dim):
 
     def set_value_at_position(location, output_model, count_model, fixed_ones, values):
         print location.type, values.type, output_model.type
-        output_subtensor = output_model[location[0], location[2]]
-        count_subtensor = count_model[location[0], location[2]]
-        ones_subtensor = fixed_ones[location[0], location[2]]
-        values_subtensor = values[location[3], location[2]]
+        output_subtensor = output_model[location[0], location[1]]
+        count_subtensor = count_model[location[0], location[1]]
+        ones_subtensor = fixed_ones[location[0], location[1]]
+        values_subtensor = values[location[2], location[1]]
         return tensor.inc_subtensor(output_subtensor, values_subtensor), \
                tensor.inc_subtensor(count_subtensor, ones_subtensor)
 
