@@ -147,7 +147,7 @@ def train_lstm(
         batch_size = 100
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
-    ydim = 26 # Hard-code, one that appears in the testing set, not in the training set
+    ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1

@@ -50,8 +50,8 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
     """
     Create the matrices from the datasets.
 
-    This pad each sequence to the same lenght: the lenght of the
-    longuest sequence or maxlen.
+    This pad each sequence to the same length: the length of the
+    longest sequence or maxlen.
 
     if maxlen is set, we will cut all sequence to this maximum
     lenght.
@@ -92,6 +92,17 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
     words_mask = []
     y = numpy.zeros((16, n_samples)).astype('int8')
     y_mask = numpy.zeros((16, n_samples)).astype('int8')
+
+
+    for idx, (s_c, s_w, l) in enumerate(zip(char_seqs, word_seqs, labels)):
+        # idx is the current position in the mini-batch
+        # s_c is a list of characters
+        # s_w is a list of words
+        # l is a list of labels
+        x_c[:lengths[idx], idx] = s_c
+        x_w[:lengths[idx], idx] = s_w
+        x_mask[:lengths[idx], idx] = 1.
+
     for idx, (s_c, s_w, l) in enumerate(zip(char_seqs, word_seqs, labels)):
         # idx is the current position in the mini-batch
         # s is a list of characters
@@ -112,7 +123,17 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
                 break
             if c >= len(l):
                 break
-            words_mask.append((c, i, idx, j))
+
+            # First element is the destination word
+            #  e.g. the third word of the current tweet
+            # Second element is the position within the minibatch
+            #  e.g. the 40th tweet in the batch
+            # Third element is the orginal character position in the sequence
+            #  e.g. goes up to 140th character in the original tweet
+            # This mask describes the how to map characters into words.
+            # e.g. (0, 1, 2) means, "for the second tweet in the minibatch, map the 3rd character
+            # originating from the LSTM layer to the first word, then average."
+            words_mask.append((c, idx, j))
 
             y[c, idx] = l[c]
             y_mask[c, idx] = 1
