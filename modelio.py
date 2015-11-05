@@ -89,7 +89,7 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
     x_c = numpy.zeros((maxlen, n_samples)).astype('int8')
     x_w = numpy.zeros((maxlen, n_samples)).astype('int32')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
-    words_mask = []
+    words_mask = numpy.zeros((maxlen, n_samples), dtype='int32')
     y = numpy.zeros((16, n_samples)).astype('int8')
     y_mask = numpy.zeros((16, n_samples)).astype('int8')
 
@@ -123,22 +123,12 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
                 break
             if c >= len(l):
                 break
-
-            # First element is the destination word
-            #  e.g. the third word of the current tweet
-            # Second element is the position within the minibatch
-            #  e.g. the 40th tweet in the batch
-            # Third element is the orginal character position in the sequence
-            #  e.g. goes up to 140th character in the original tweet
-            # This mask describes the how to map characters into words.
-            # e.g. (0, 1, 2) means, "for the second tweet in the minibatch, map the 3rd character
-            # originating from the LSTM layer to the first word, then average."
-            words_mask.append((c, idx, j))
+            words_mask[j+1, idx] = c # Assign a nominal word for clarity
+            # This provides the actual index into the LSTM output
+            words_mask[j+1, idx] = numpy.ravel_multi_index((i, j, c), (maxlen, n_samples, 16))
 
             y[c, idx] = l[c]
             y_mask[c, idx] = 1
             i += 1
-
-    words_mask = numpy.asarray(words_mask, dtype='int8')
 
     return x_c, x_w, x_mask, words_mask, y, y_mask
