@@ -53,12 +53,12 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm'):
     dim_proj = options['dim_proj']
     rval, updates = theano.scan(_step,
                                 sequences=[state_below],
-                                outputs_info=[tensor.alloc(numpy_floatX(0.),
+                                outputs_info=[tensor.cast(tensor.alloc(numpy_floatX(0.),
                                                            n_samples,
-                                                           dim_proj),
-                                              tensor.alloc(numpy_floatX(0.),
+                                                           dim_proj), theano.config.floatX),
+                                              tensor.cast(tensor.alloc(numpy_floatX(0.),
                                                            n_samples,
-                                                           dim_proj)],
+                                                           dim_proj), theano.config.floatX)],
                                 name=_p(prefix, '_layers'),
                                 n_steps=nsteps)
     return rval[0]

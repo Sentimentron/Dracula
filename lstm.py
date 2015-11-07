@@ -49,12 +49,12 @@ def build_model(tparams, options):
 
     emb = tensor.concatenate([emb1, emb2], axis=2)
 
-    emb = theano.printing.Print("emb", attrs=["shape"])(emb)
+    #emb = theano.printing.Print("emb", attrs=["shape"])(emb)
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
     proj = lstm_mask_layer(proj, mask)
 
-    proj = theano.printing.Print("proj", attrs=["shape"])(proj)
+    #proj = theano.printing.Print("proj", attrs=["shape"])(proj)
 
     avg_per_word = per_word_averaging_layer(proj, wmask)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
@@ -63,8 +63,8 @@ def build_model(tparams, options):
 
     pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask)
 
-    y = theano.printing.Print("y", attrs=["shape"])(y)
-    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+    #y = theano.printing.Print("y", attrs=["shape"])(y)
+    #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
     f_pred_prob = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
@@ -72,7 +72,7 @@ def build_model(tparams, options):
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
 
-    y = theano.printing.Print("y")(y)
+    #y = theano.printing.Print("y")(y)
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
 

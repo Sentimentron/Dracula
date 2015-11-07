@@ -85,12 +85,12 @@ def param_init_lstm(options, params, prefix='lstm', mult=1):
                            ortho_weight(options['dim_proj']*mult),
                            ortho_weight(options['dim_proj']*mult),
                            ortho_weight(options['dim_proj']*mult)], axis=1)
-    params[_p(prefix, 'W')] = W
+    params[_p(prefix, 'W')] = W.astype(config.floatX)
     U = numpy.concatenate([ortho_weight(options['dim_proj']*mult),
                            ortho_weight(options['dim_proj']*mult),
                            ortho_weight(options['dim_proj']*mult),
                            ortho_weight(options['dim_proj']*mult)], axis=1)
-    params[_p(prefix, 'U')] = U
+    params[_p(prefix, 'U')] = U.astype(config.floatX)
     b = numpy.zeros((4 * options['dim_proj'] * mult,))
     params[_p(prefix, 'b')] = b.astype(config.floatX)
 
