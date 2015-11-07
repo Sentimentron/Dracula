@@ -42,12 +42,13 @@ def per_word_averaging_layer(proj, wmask, trim=True):
     n_samples = proj.shape[1]
     n_proj = proj.shape[2]
 
-    tmp = tensor.alloc(0.0, n_chars * n_samples * 16, n_proj)
+    tmp = tensor.alloc(numpy_floatX(0.0), n_chars * n_samples * 16, n_proj)
     tmp = theano.tensor.inc_subtensor(tmp[theano.tensor.flatten(wmask)], theano.tensor.reshape(proj, (n_chars * n_samples, n_proj)))
     tmp = theano.tensor.reshape(tmp, (n_chars, n_samples, 16, n_proj))
     divider = theano.tensor.neq(tmp, 0.0).sum(axis=0)
     divider += theano.tensor.eq(divider, 0.0)  # Filter NaNs
     tmp = tmp.sum(axis=0) / divider
+    tmp = tensor.cast(tmp, theano.config.floatX)
     if not trim:
         return tmp
     else:
@@ -65,11 +66,14 @@ def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask):
                     where the output is undefined, causing this thing to output the special 0 label (for "don't care")
     :return: Softmax predictions
     """
+    avg_per_word = theano.printing.Print("avg_per_word", attrs=["shape"])(avg_per_word)
     raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U * dropout_mask) + b),
                               outputs_info=None,
                               sequences=[avg_per_word, tensor.arange(16)]
                               )
 
+    raw_pred = theano.tensor.printing.Print("raw_pred", attrs=["shape"])(raw_pred)
+    y_mask = theano.tensor.printing.Print("y_mask", attrs=["shape"])(y_mask)
     pred = tensor.zeros_like(raw_pred)
     pred = tensor.inc_subtensor(pred[:, :, 0], 1)
     pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])

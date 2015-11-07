@@ -35,7 +35,7 @@ def build_model(tparams, options):
     xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
     mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    wmask = tensor.matrix('wmask', dtype='int8')
+    wmask = tensor.matrix('wmask', dtype='int32')
     wmask.tag.test_value = numpy.random.randint(0, 13, (6, 4))
     y = tensor.matrix('y', dtype='int8')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
@@ -49,14 +49,22 @@ def build_model(tparams, options):
 
     emb = tensor.concatenate([emb1, emb2], axis=2)
 
+    emb = theano.printing.Print("emb", attrs=["shape"])(emb)
+
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
     proj = lstm_mask_layer(proj, mask)
 
-    avg_per_word = per_word_averaging_layer(proj, wmask)[1:]
+    proj = theano.printing.Print("proj", attrs=["shape"])(proj)
+
+    avg_per_word = per_word_averaging_layer(proj, wmask)
+    avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
     proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words")
 
     pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask)
+
+    y = theano.printing.Print("y", attrs=["shape"])(y)
+    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
     f_pred_prob = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
