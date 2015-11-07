@@ -6,6 +6,7 @@
 
 import numpy
 import theano
+import logging
 import sys
 
 def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}):
@@ -113,25 +114,45 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
 
         c = 0
         i = 0
+        warning = None
         for j, a in enumerate(s_c):
-            if a == 0 or i >= 16:
+            # j is the current character in this tweet
+            # idx is the current tweet in this minibatch
+            # c is the current word (can be up to 16)
+
+            if a == 0:
+                # This current character is a space
+                # Increase the word count and continue
                 c += 1
-                i = 1
                 continue
+
             if c >= 16:
-                # print >> sys.stderr, "Warning: truncation"
-                break
+                # We can't represent more than 16 words per tweet
+                # ATM
+                warning = "Truncation! Words = %d" % (c,)
+                continue
+
             if c >= len(l):
-                break
+                warning = "Length mismatch! Words = %d, no labels = %d" % (c, len(labels))
+                continue
+
             if j+1 >= maxlen:
+                warning = "premature max-len break"
                 break
+
             words_mask[j+1, idx] = c # Assign a nominal word for clarity
             # This provides the actual index into the LSTM output
 
-            words_mask[j+1, idx] = numpy.ravel_multi_index((j, i, c), (maxlen, n_samples, 16))
+            #print j, idx, c, maxlen, n_samples, 16
+            #print numpy.ravel_multi_index((j, idx, c), (maxlen, n_samples, 16))
+
+            words_mask[j+1, idx] = numpy.ravel_multi_index((j, idx, c), (maxlen, n_samples, 16))
 
             y[c, idx] = l[c]
             y_mask[c, idx] = 1
-            i += 1
+
+        if warning is not None:
+            pass
+            #logging.warning("%s", warning)
 
     return x_c, x_w, x_mask, words_mask, y, y_mask
