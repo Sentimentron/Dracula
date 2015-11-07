@@ -83,7 +83,7 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
         if len(lengths) < 1:
             return None, None, None
 
-    n_samples = len(char_seqs)
+    n_samples = len(lengths)
     maxlen = numpy.max(lengths)
 
     x_c = numpy.zeros((maxlen, n_samples)).astype('int8')
@@ -123,9 +123,12 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
                 break
             if c >= len(l):
                 break
+            if j+1 >= maxlen:
+                break
             words_mask[j+1, idx] = c # Assign a nominal word for clarity
             # This provides the actual index into the LSTM output
-            words_mask[j+1, idx] = numpy.ravel_multi_index((i, j, c), (maxlen, n_samples, 16))
+
+            words_mask[j+1, idx] = numpy.ravel_multi_index((j, i, c), (maxlen, n_samples, 16))
 
             y[c, idx] = l[c]
             y_mask[c, idx] = 1
