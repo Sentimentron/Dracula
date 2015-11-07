@@ -52,7 +52,7 @@ def build_model(tparams, options):
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
     proj = lstm_mask_layer(proj, mask)
 
-    avg_per_word = per_word_averaging_layer(proj, wmask, n_samples, options['dim_proj'])
+    avg_per_word = per_word_averaging_layer(proj, wmask)[1:]
 
     proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words")
 
