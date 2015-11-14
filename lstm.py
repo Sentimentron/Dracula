@@ -52,6 +52,7 @@ def build_model(tparams, options):
     #emb = theano.printing.Print("emb", attrs=["shape"])(emb)
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
+
     proj = lstm_mask_layer(proj, mask)
 
     #proj = theano.printing.Print("proj", attrs=["shape"])(proj)

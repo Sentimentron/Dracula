@@ -33,7 +33,7 @@ def init_params(options, reloaded=False):
     else:
         for k in nparams:
             nparams[k] = options[k]
-        logging.debug("%s", nparams.keys())
+        logging.debug("%s %s", options.keys(), nparams.keys())
         return nparams
 
 def generate_init_params(options, params):
