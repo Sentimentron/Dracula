@@ -6,8 +6,8 @@
 
 from collections import OrderedDict
 import logging
-
 import numpy
+import pickle
 
 
 def zipp(params, tparams):
@@ -33,4 +33,10 @@ def load_params(path, params):
     for k in pp:
         if k in ['Cemb', 'Wemb', 'lstm_W', 'lstm_b', 'lstm_U', 'lstm_words_W', 'lstm_words_b', 'lstm_words_U', 'U', 'b']:
             params[k] = pp[k]
+    path = "%s.pkl" % (path,)
+    logging.info("Loading model from file '%s'...", path)
+    with open(path, 'rb') as fin:
+        data = pickle.load(fin)
+        for k in ['dim_proj_chars', 'dim_proj_words', 'char_dict', 'pos_dict', 'word_dict']:
+            params[k] = data[k]
     return params

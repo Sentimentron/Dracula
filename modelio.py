@@ -9,7 +9,7 @@ import theano
 import logging
 import sys
 
-def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}):
+def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_append=True):
     cur_chars, cur_words, cur_labels = [], [], []
     words, chars, labels = [], [], []
     with open(path, 'r') as fin:
@@ -26,18 +26,35 @@ def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}):
 
             word, pos = line.split('\t')
 
-            if word not in worddict:
+            if word not in worddict and allow_append:
                 worddict[word] = len(worddict)+1
 
             for c in word:
-                if c not in chardict:
+                if c not in chardict and allow_append:
                     chardict[c] = len(chardict)+1
-                cur_chars.append(chardict[c])
-                cur_words.append(worddict[word])
-                if pos not in posdict:
+
+                if c in chardict:
+                    cur_chars.append(chardict[c])
+                else:
+                    cur_chars.append(0)
+
+                if word in worddict:
+                    cur_words.append(worddict[word])
+                else:
+                    cur_words.append(0)
+
+                if pos not in posdict and allow_append:
                     posdict[pos] = len(posdict)+1
-            cur_labels.append(posdict[pos])
-            cur_words.append(worddict[word])
+
+            if pos in posdict:
+                cur_labels.append(posdict[pos])
+            else:
+                cur_labels.append(0)
+
+            if word in worddict:
+                cur_words.append(worddict[word])
+            else:
+                cur_words.append(0)
             cur_chars.append(0)
 
     if len(cur_chars) > 0:
@@ -46,6 +63,48 @@ def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}):
     	labels.append(cur_labels)
 
     return chars, words, labels
+
+def string_to_unprepared_format(text, chardict, worddict):
+
+    with open('sample.conll', 'wb') as fp:
+        for word in text.split():
+            print >> fp, "%s\t?" % (word,)
+
+    chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
+    return [], chars, words, labels
+
+    errors = []
+    words, chars, labels = [], [], []
+    cur_chars, cur_words, cur_labels = [], [], []
+    for word in text.split():
+        if word not in worddict:
+            errors.append("%s not in word dictionary" % (word, ))
+            wordidx = 0
+        else:
+            wordidx = worddict[word]
+
+        for c in word:
+            if c not in chardict:
+                errors.append("%s not in char dictionary" % (c, ))
+                charidx = 0
+            else:
+                charidx = chardict[c]
+
+            chars.append(charidx)
+            words.append(wordidx)
+            labels.append(0)
+
+        chars.append(0)
+        words.append(wordidx)
+        labels.append(0)
+
+        cur_words.append(words)
+        cur_chars.append(chars)
+        cur_labels.append(labels)
+
+        chars, words, labels = [], [], []
+
+    return errors, cur_chars, cur_words, cur_labels
 
 def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
     """
