@@ -20,6 +20,9 @@ from nn_optimizers import *
 from nn_support import pred_error
 from nn_serialization import zipp, unzip, load_params
 
+import os.path
+import pickle
+
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
@@ -133,17 +136,26 @@ def train_lstm(
     print "model options", model_options
 
     if reload_model is not None:
-        load_params('lstm_model.npz', model_options)
+        load_params(reload_model, model_options)
         char_dict = model_options['char_dict']
         word_dict = model_options['word_dict']
         pos_dict = model_options['pos_dict']
 
     # Load the training data
     print 'Loading data'
+    #
     # Pre-populate the dictionaries
+    #
+    if not os.path.isfile("substitutions.pkl"):
+        raise Exception("substitutions.pkl wasn't found, have you run substitution.py?")
+
     load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
     load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
     load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+
+    with open("substitutions.pkl", "rb") as fin:
+        word_dict = pickle.load(fin)
+
     if not pretrain:
         # Now load the data for real
         train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
