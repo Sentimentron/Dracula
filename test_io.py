@@ -56,8 +56,8 @@ class TestIOMethods(unittest.TestCase):
 
         self.assertEquals(chars[0][0:3], [1, 2, 0])
         self.assertEquals(chars[0][3:13], [3, 4, 4, 5, 6, 7, 8, 9, 6, 0])
-        self.assertEquals(words[0][0:3], [1, 1, 0])
-        self.assertEquals(words[0][3:13], [2, 2, 2, 2, 2, 2, 2, 2, 2, 0])
+        self.assertEquals(words[0][0:3], [1, 1, 1])
+        self.assertEquals(words[0][3:13], [2, 2, 2, 2, 2, 2, 2, 2, 2, 2])
         self.assertEquals(labels, [[1, 2, 1, 2, 3, 4, 3, 5, 5, 4]])
 
     def test_load_pos_tagged_data_2(self):
@@ -99,7 +99,7 @@ class TestIOMethods(unittest.TestCase):
         self.assertEquals(xc.shape, (15, 10))
         self.assertEquals(xw.shape, (15, 10)) # 15 is also the maximum number of words in a tweet
         self.assertEquals(x_mask.shape, (15, 10))
-        self.assertEquals(words_mask.shape, (64, 4))
+        self.assertEquals(words_mask.shape, (15, 10))
         self.assertEquals(y.shape, (16, 10))
 
         self.assertEquals(list(xc[:, 0]), [1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0])
@@ -108,13 +108,4 @@ class TestIOMethods(unittest.TestCase):
         self.assertEquals(list(y[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
         self.assertEquals(list(y_mask[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
 
-        # Index 0 is the word index
-        # Index 2 is the mini-batch index
-        self.assertEquals(list(words_mask[0:7, 0]), [0, 0, 0, 0, 0, 0, 0])
-        self.assertEquals(list(words_mask[0:7, 2]), [0, 0, 0, 0, 0, 0, 0])
-
-        self.assertEquals(list(words_mask[7:14, 0]), [0, 0, 0, 0, 0, 0, 0])
-        self.assertEquals(list(words_mask[7:14, 2]), [1, 1, 1, 1, 1, 1, 1])
-
-        # Need a y-mask, maybe that's stopping us from training?
-
+        # words mask: must be tested via the word_averaging_layer op
