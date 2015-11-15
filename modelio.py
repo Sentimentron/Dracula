@@ -9,7 +9,7 @@ import theano
 import logging
 import sys
 
-def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_append=True):
+def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_append=True, popularity={}):
     cur_chars, cur_words, cur_labels = [], [], []
     words, chars, labels = [], [], []
     with open(path, 'r') as fin:
@@ -28,6 +28,10 @@ def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_app
 
             if word not in worddict and allow_append:
                 worddict[word] = len(worddict)+1
+
+            if word not in popularity:
+                popularity[word] = 0
+            popularity[word] = popularity[word] + 1
 
             for c in word:
                 if c not in chardict and allow_append:

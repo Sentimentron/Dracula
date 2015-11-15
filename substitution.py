@@ -16,12 +16,22 @@ logging.basicConfig(level=logging.DEBUG)
 
 with open('substitutions.pkl', 'wb') as fout:
 
-    word_dict = {}
-    load_pos_tagged_data("Data/Brown.conll", worddict=word_dict)
-    load_pos_tagged_data("Data/TweeboOct27.conll", worddict=word_dict)
+    threshold = 1
 
-    test_dict = {}
-    load_pos_tagged_data("Data/TweeboDaily547.conll", worddict=test_dict)
+    word_dict, pop_dict = {}, {}
+    load_pos_tagged_data("Data/Brown.conll", worddict=word_dict, popularity=pop_dict)
+    load_pos_tagged_data("Data/TweeboOct27.conll", worddict=word_dict, popularity=pop_dict)
+
+    for w in pop_dict:
+        if pop_dict[w] <= threshold:
+            word_dict.pop(w, None)
+
+    test_dict, test_pop = {}, {}
+    load_pos_tagged_data("Data/TweeboDaily547.conll", worddict=test_dict, popularity=test_pop)
+
+    for w in test_pop:
+        if test_pop[w] <= threshold:
+            test_dict.pop(w, None)
 
     sim = MultiSimilarityMatcher()
     sim.update_from_dict(word_dict)
