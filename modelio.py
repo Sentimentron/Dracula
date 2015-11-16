@@ -9,59 +9,117 @@ import theano
 import logging
 import sys
 
-def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_append=True):
-    cur_chars, cur_words, cur_labels = [], [], []
-    words, chars, labels = [], [], []
+from collections import defaultdict
+
+def get_windowed(seq, window_length=16, overlap=8):
+    # Base case: return whatever we have
+    if len(seq) <= window_length:
+        return [seq]
+
+    # Otherwise, maintain a buffer of elements
+    buf = []
+    ret = []
+    for idx, i in enumerate(seq):
+        buf.append(i)
+        if len(buf) == window_length:
+            ret.append(tuple(buf))
+            buf = buf[overlap+1:]
+
+    if len(buf) != window_length - overlap - 1:
+        ret.append(tuple(buf))
+
+    return ret
+
+def build_character_dictionary(path, chars = {}):
     with open(path, 'r') as fin:
         for line in fin:
             line = line.strip()
             if len(line) == 0:
-                chars.append(cur_chars[:-1])
-                words.append(cur_words[:-1])
-                labels.append(cur_labels)
-                cur_chars = []
-                cur_labels = []
-                cur_words = []
                 continue
-
-            word, pos = line.split('\t')
-
-            if word not in worddict and allow_append:
-                worddict[word] = len(worddict)+1
-
+            word, _ = line.split('\t')
             for c in word:
-                if c not in chardict and allow_append:
-                    chardict[c] = len(chardict)+1
+                if c not in chars:
+                    chars[c] = len(chars) + 1
+    return chars
 
-                if c in chardict:
-                    cur_chars.append(chardict[c])
+def build_word_dictionary(path, words = {}):
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            word, _ = line.split('\t')
+            if word not in words:
+                words[word] = len(words) + 1
+    return words
+
+def build_tag_dictionary(path, tags={}):
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            _, tag = line.split('\t')
+            if tag not in tags:
+                tags[tag] = len(tags) + 1
+    return tags
+
+def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_append=True):
+
+    if allow_append:
+        build_character_dictionary(path, chardict)
+        build_word_dictionary(path, worddict)
+        build_tag_dictionary(path, posdict)
+
+    words, chars, labels = [], [], []
+    wordbuf, charbuf, labelsbuf = defaultdict(list), defaultdict(list), defaultdict(list)
+    tweetidx = 0
+    with open(path, 'r') as fin:
+        for line in fin:
+            cur_words, cur_chars, cur_labels = wordbuf[tweetidx], charbuf[tweetidx], labelsbuf[tweetidx]
+            cur_word, cur_char, cur_label = [], [], []
+            line = line.strip()
+            if len(line) == 0:
+                # Tweet boundary
+                tweetidx += 1
+                continue
+            word, pos = line.split('\t')
+            for c in '%s ' % (word, ):
+
+                if c in chardict and c != ' ':
+                    cur_char.append(chardict[c])
+                elif c == ' ':
+                    cur_char.append(0)
                 else:
-                    cur_chars.append(0)
+                    cur_char.append(0)
 
                 if word in worddict:
-                    cur_words.append(worddict[word])
+                    cur_word.append(worddict[word])
                 else:
-                    cur_words.append(0)
-
-                if pos not in posdict and allow_append:
-                    posdict[pos] = len(posdict)+1
+                    cur_word.append(0)
 
             if pos in posdict:
-                cur_labels.append(posdict[pos])
+                cur_label.append(posdict[pos])
             else:
-                cur_labels.append(0)
+                cur_label.append(0)
 
-            if word in worddict:
-                cur_words.append(worddict[word])
-            else:
-                cur_words.append(0)
-            cur_chars.append(0)
+            cur_words.append(cur_word)
+            cur_labels.append(cur_label)
+            cur_chars.append(cur_char)
 
-    if len(cur_chars) > 0:
-    	chars.append(cur_chars)
-        words.append(cur_words)
-    	labels.append(cur_labels)
-
+        for tweetidx in wordbuf:
+            cur_words, cur_chars, cur_labels = wordbuf[tweetidx], charbuf[tweetidx], labelsbuf[tweetidx]
+            for window in get_windowed(zip(cur_chars, cur_words, cur_labels), 16, 15):
+                window_chars, window_words, window_labels = [], [], []
+                for (cs, ws, ls) in window:
+                    for (c, w) in zip(cs, ws):
+                        window_chars.append(c)
+                        window_words.append(w)
+                    for l in ls:
+                        window_labels.append(l)
+                words.append(window_words)
+                chars.append(window_chars)
+                labels.append(window_labels)
     return chars, words, labels
 
 def string_to_unprepared_format(text, chardict, worddict):
