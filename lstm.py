@@ -158,9 +158,9 @@ def train_lstm(
 
     if not pretrain:
         # Now load the data for real
-        train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
+        train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict, 0)`
         train, valid = split_at(train, 0.05)
-        test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+        test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict, 16)
     else:
         # Pre-populate
         test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
