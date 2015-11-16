@@ -64,7 +64,7 @@ def build_tag_dictionary(path, tags={}):
                 tags[tag] = len(tags) + 1
     return tags
 
-def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_append=True):
+def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, overlap=15, allow_append=True):
 
     if allow_append:
         build_character_dictionary(path, chardict)
@@ -109,7 +109,7 @@ def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, allow_app
 
         for tweetidx in wordbuf:
             cur_words, cur_chars, cur_labels = wordbuf[tweetidx], charbuf[tweetidx], labelsbuf[tweetidx]
-            for window in get_windowed(zip(cur_chars, cur_words, cur_labels), 16, 15):
+            for window in get_windowed(zip(cur_chars, cur_words, cur_labels), 16, overlap):
                 window_chars, window_words, window_labels = [], [], []
                 for (cs, ws, ls) in window:
                     for (c, w) in zip(cs, ws):
