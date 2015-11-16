@@ -45,6 +45,14 @@ class MatcherTests(unittest.TestCase):
         test_dict = {}
         load_pos_tagged_data("Data/TweeboDaily547.conll", worddict=test_dict)
 
+        for w in list(word_dict):
+            if w[0] != "i":
+                word_dict.pop(w, None)
+
+        for w in list(test_dict):
+            if w[0] != "i":
+                test_dict.pop(w, None)
+
         self.assertTrue("ipod" in word_dict)
         self.assertTrue("ipod" not in test_dict)
         self.assertTrue("iPod" not in word_dict)
