@@ -102,7 +102,7 @@ def split_at(src, prop):
 
 def train_lstm(
     dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
-    dim_proj_words=16,
+    dim_proj_words=48,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -158,7 +158,7 @@ def train_lstm(
 
     if not pretrain:
         # Now load the data for real
-        train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict, 0)`
+        train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict, 0)
         train, valid = split_at(train, 0.05)
         test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict, 16)
     else:
