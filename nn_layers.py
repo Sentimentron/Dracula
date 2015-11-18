@@ -6,19 +6,19 @@ import theano
 from theano import tensor
 from util import numpy_floatX
 
+import tensorflow as tf
 
-def embeddings_layer(x, Wemb, n_timesteps, n_samples, dim_proj):
+def flatten(tensor):
+    pass
+
+def embeddings_layer(x, Wemb):
     """
-    Returns the one-hot vector x after encoding in the Wemb embedding space.
-    :param x: One-hot index vector (25, 23...)
-    :param Wemb: Word embeddings
-    :param n_timesteps: Maximum number of timesteps
-    :param n_samples: Maximum number of samples
-    :param dim_proj: Size of the word embeddings space
-    :return:
+    Returns the matrix x after encoding in the Wemb embedding space.
+    :param x: Indice matrix (25, 23...)
+    :return: A Tensor containing the values looked up
     """
 
-    return Wemb[x.flatten()].reshape([n_timesteps, n_samples, dim_proj])
+    return tf.gather(Wemb, x)
 
 
 def lstm_mask_layer(proj, mask):
@@ -30,7 +30,8 @@ def lstm_mask_layer(proj, mask):
     :return: The masked values
     """
 
-    return proj * mask[:, :, None]
+    return tf.matmul(proj, mask)
+    #return proj * mask[:, :, None]
 
 def per_word_averaging_layer(proj, wmask, trim=True):
     """

@@ -23,6 +23,8 @@ from nn_serialization import zipp, unzip, load_params
 import os.path
 import pickle
 
+import tensorflow as tf
+
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
@@ -32,21 +34,14 @@ numpy.random.seed(SEED)
 def build_model(tparams, options):
     dropout_mask = tensor.matrix('dropout_mask', dtype=config.floatX)
 
-    xc = tensor.matrix('xc', dtype='int8')
-    xw = tensor.matrix('xw', dtype='int32')
-
-    xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
-    mask = tensor.matrix('mask', dtype=config.floatX)
-    mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    wmask = tensor.matrix('wmask', dtype='int32')
-    wmask.tag.test_value = numpy.random.randint(0, 13, (6, 4))
-    y = tensor.matrix('y', dtype='int8')
-    y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    y_mask = tensor.matrix('y_mask', dtype='int8')
-
+    xc = tf.placeholder('int', shape=[None, options['dim_proj_words']])
+    xw = tf.placeholder('int', shape=[None, options['dim_proj_chars']])
+    mask = tf.placeholder('float', shape=[None, None])
+    wmask = tf.placeholder('int', shape=[None, None])
+    y = tf.placeholder('int', shape=[None, options['ydim']])
+    y_mask = tf.placeholder('int', shape=[None, None])
     n_timesteps = xc.shape[0]
     n_samples = xc.shape[1]
-
     emb1 = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj_chars'])
     emb2 = embeddings_layer(xw, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj_words'])
 
@@ -101,7 +96,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
     dim_proj_words=48,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
