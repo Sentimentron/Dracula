@@ -5,9 +5,12 @@ from modelio import string_to_unprepared_format, prepare_data
 from nn_params import *
 from nn_optimizers import *
 from nn_serialization import load_params
+from matcher import MultiSimilarityMatcher
 
 from flask import Flask, request, jsonify
 app = Flask(__name__)
+
+from collections import defaultdict, Counter
 
 model = None
 
@@ -21,7 +24,7 @@ def get_lstm(
     lrate=0.0001,  # Learning rate for sgd (not used for adadelta and rmsprop)
     optimizer=adadelta,  # sgd, adadelta and rmsprop available, sgd very hard to use, not recommanded (probably need momentum and decaying learning rate).
     encoder='lstm',  # TODO: can be removed must be lstm.
-    saveto='lstm_model.npz',  # The best model will be saved there
+    model_path='lstm_model.npz', # Where to load the model from
     batch_size=20,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
 
@@ -41,11 +44,19 @@ def get_lstm(
     model_options = locals().copy()
     print "model options", model_options
 
-    load_params('pretrained_model.npz', model_options)
+    load_params(model_path, model_options)
     char_dict = model_options['char_dict']
     word_dict = model_options['word_dict']
+    for w in word_dict.keys():
+        word_dict[w.decode('utf8')] = word_dict[w]
     pos_dict = model_options['pos_dict']
 
+    print "Creating matcher..."
+    matcher = MultiSimilarityMatcher()
+    matcher.update_from_dict(word_dict)
+    model_options['matcher'] = matcher
+
+    print "Continuing with model..."
     ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
@@ -82,21 +93,30 @@ def get_lstm(
 
     return dropout_mask, xc, xw, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost, model_options
 
-@app.route("/api/tag/<text>")
-def hello(text):
+@app.route("/api/tag", methods=["GET"])
+def hello():
     global model
 
+    text = request.args.get("text", "")
+
     response = {}
-    if text is None:
-        text = request.args.get("text", "")
     if text is None or len(text) == 0:
         response["error"] = "no text provided"
-    elif len(text) > 140:
-        response["error"] = "text is too long (truncated to 140)"
-        text = ''.join(text[:140])
     response["text"] = text
 
-    errors, chars, words, labels = string_to_unprepared_format(text, model[-1]['char_dict'], model[-1]['word_dict'])
+    text = text.split()
+    rebuilt_text = []
+    for t in text:
+        if t not in model[-1]['word_dict']:
+            matcher = model[-1]['matcher']
+            _, r = matcher.get_most_similar_word(t)
+            rebuilt_text.append(r.decode('utf8'))
+        else:
+            rebuilt_text.append(t)
+
+    rebuilt_text = ' '.join(rebuilt_text)
+    response['prepared_text'] = rebuilt_text
+    errors, chars, words, labels = string_to_unprepared_format(rebuilt_text, model[-1]['char_dict'], model[-1]['word_dict'])
     if len(errors) > 0:
         response["tokenization_errors"] = errors
 
@@ -110,12 +130,39 @@ def hello(text):
     pred = model[-3](dropout_mask, xc, xw, mask, wmask, y_mask)
     print pred
 
+    words, windows = pred.shape
+    print windows, words
+    tag_counter = defaultdict(Counter)
+
+    # Scan along each 16-word window,
+    # build up a list of the most popular tags
+    for winidx in range(windows):
+        for idx, i in enumerate(pred[:, winidx]):
+            wordidx = winidx + idx
+            if i == 0:
+                break
+            t = model[-1]['inv_pos_dict'][i]
+            tag_counter[wordidx].update([t])
+
+    # Set up the response
     response['tags'] = []
-    for i in pred[:, 0]:
-        if i == 0:
+    response['tags_and_text'] = []
+
+    text = text
+    for idx in sorted(tag_counter):
+        if len(tag_counter[idx]) == 0:
             break
-        t = model[-1]['inv_pos_dict'][i]
-        response['tags'].append(t)
+        tag, _ = tag_counter[idx].most_common()[0]
+        response['tags'].append(tag)
+        response['tags_and_text'].append((tag, text[idx]))
+
+    if False:
+        for idx, i in enumerate(pred[:, 0]):
+            if i == 0:
+                break
+            t = model[-1]['inv_pos_dict'][i]
+            response['tags'].append(t)
+            response['tags_and_text'].append((t, text[idx]))
     return jsonify(**response)
 
 if __name__ == "__main__":

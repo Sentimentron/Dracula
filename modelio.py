@@ -126,7 +126,12 @@ def string_to_unprepared_format(text, chardict, worddict):
 
     with open('sample.conll', 'wb') as fp:
         for word in text.split():
-            print >> fp, "%s\t?" % (word,)
+            if word not in worddict:
+                raise Exception((word, "not in dictionary"))
+            word = unicode(word).encode('utf8')
+            line = '%s\t?\n' % (word,)
+            fp.write(line)
+            #           print >> fp, "%s\t?" % (word,)
 
     chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
     return [], chars, words, labels
@@ -269,7 +274,6 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen=None):
             y_mask[c, idx] = 1
 
         if warning is not None:
-            pass
-            #logging.warning("%s", warning)
+            logging.warning("%s", warning)
 
     return x_c, x_w, x_mask, words_mask, y, y_mask
