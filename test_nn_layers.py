@@ -4,7 +4,7 @@ import theano.tensor
 import numpy
 import logging
 
-from nn_layers import per_word_averaging_layer, embeddings_layer
+from nn_layers import per_word_averaging_layer, embeddings_layer, per_word_averaging_layer_distrib
 
 import tensorflow as tf
 
@@ -57,7 +57,7 @@ class WordAveragingOpTests(unittest.TestCase):
 
         W = numpy.zeros((n_chars, n_samples), dtype='int32')
         W[1, 0] = 1  # First tweet, first character to first word
-        W[2, 0] = 1  # First tweet, second character to second word
+        W[2, 0] = 1  # First tweet, second character to first word
         W[3, 0] = 2  # First tweet, third character to second word
         W[1, 1] = 1  # Second tweet, first character to second word
 
@@ -69,22 +69,51 @@ class WordAveragingOpTests(unittest.TestCase):
 
         return n_chars, n_samples, n_proj, L, W, O
 
+    def test_forward_distrib(self):
+
+        n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
+
+        ref = numpy.zeros((16, n_chars, n_samples, n_proj))
+        ref[1, 1, 0, :] = [0.2, 0.3, 0.4, 0.5]
+        ref[1, 2, 0, :] = [-0.2, -0.4, 0.6, 0.7]
+        ref[2, 3, 0, :] = [0.8, -0.2, 0.3, -0.1]
+        ref[1, 1, 1, :] = [-0.4, 0.2, 0.8, 0.9]
+
+        Wmask = numpy.zeros((16, n_chars, n_samples, n_proj), dtype='int32')
+
+        for i in range(n_chars):
+            for j in range(n_samples):
+                Wmask[W[i, j], i, j, :] = numpy.ones((n_proj,))
+
+        l = tf.constant(L, dtype='float32')
+        w = tf.constant(Wmask, name='wmask', dtype='float32')
+
+        init = tf.initialize_all_variables()
+        sess = tf.Session()
+        sess.run(init)
+
+        O = per_word_averaging_layer_distrib(l, w, 16).eval(session=sess)
+
+        self.assertTrue(numpy.allclose(ref, O))
+
     def test_forward(self):
 
         n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
 
+        Wmask = numpy.zeros((16, n_chars, n_samples, n_proj), dtype='int32')
+
         for i in range(n_chars):
             for j in range(n_samples):
-                W[i, j] = numpy.ravel_multi_index((i, j, W[i, j]), (n_chars, n_samples, 16))
+                Wmask[W[i, j], i, j, :] = numpy.ones((n_proj,))
 
-        LArg = theano.tensor.dtensor3()
-        WArg = theano.tensor.imatrix()
+        l = tf.constant(L, dtype='float32')
+        w = tf.constant(Wmask, name='wmask', dtype='float32')
 
-        out = per_word_averaging_layer(LArg, WArg, False)
+        init = tf.initialize_all_variables()
+        sess = tf.Session()
+        sess.run(init)
 
-        f = theano.function([LArg, WArg], out, on_unused_input='ignore')
-
-        O_actual = f(L, W)
+        O_actual = per_word_averaging_layer(l, w, 16, False).eval(session=sess)
 
         self.assertTrue(numpy.allclose(O, O_actual))
 
@@ -92,34 +121,28 @@ class WordAveragingOpTests(unittest.TestCase):
 
         n_chars, n_samples, n_proj, L, W, Oorig = WordAveragingOpTests.get_std()
 
+        Wmask = numpy.zeros((16, n_chars, n_samples, n_proj), dtype='int32')
+
         for i in range(n_chars):
             for j in range(n_samples):
-                W[i, j] = numpy.ravel_multi_index((i, j, W[i, j]), (n_chars, n_samples, 16))
+                Wmask[W[i, j], i, j, :] = numpy.ones((n_proj,))
 
-        # The expected output
-        O = numpy.zeros((n_samples, 16, n_proj))
-        O[0, 0, :] = [0.0, -0.05, 0.50, 0.60]  # First word, first tweet
-        O[0, 1, :] = [0.8, -0.2, 0.3, -0.1]  # Second word, first tweet
-        O[1, 0, :] = [-0.4, 0.2, 0.8, 0.9]  # First word, second tweet
+        l = tf.constant(L, dtype='float32')
+        w = tf.constant(Wmask, name='wmask', dtype='float32')
 
-        self.assertTrue(numpy.allclose(O[:, :-1], Oorig[:, 1:]))
+        init = tf.initialize_all_variables()
+        sess = tf.Session()
+        sess.run(init)
 
-        LArg = theano.tensor.dtensor3()
-        WArg = theano.tensor.imatrix()
-
-        out = per_word_averaging_layer(LArg, WArg, True)
-
-        f = theano.function([LArg, WArg], out, on_unused_input='ignore')
-
-        O_actual = f(L, W)
-
-        print O
-        print Oorig
-        print O_actual
+        O_actual = per_word_averaging_layer(l, w, 16, True).eval(session=sess)
 
         self.assertTrue(numpy.allclose(O, O_actual))
 
     def test_numpy(self):
+        """
+        This is the code we're trying to imitate, expresses the intent of
+        the per-word averaging layer.
+        """
         n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
 
         # First index is the word index
@@ -137,6 +160,9 @@ class WordAveragingOpTests(unittest.TestCase):
         self.assertTrue(numpy.allclose(O_actual, O))
 
     def test_numpy_2(self):
+        """
+        This is the version of per-word averaging implemented by Theano.
+        """
         n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
 
         Wref = numpy.zeros(W.shape, dtype='int32')
