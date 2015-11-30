@@ -50,9 +50,6 @@ def per_word_averaging_layer_distrib(proj, wmask, maxw):
     # Element-wise multiply to obtain the final result
     mul = tf.mul(wmask, proj)
 
-    # Transpose the result so the word-axis is the third
-    # proj = tf.transpose(mul, [1, 2, 0, 3])
-
     return mul
 
 def per_word_averaging_layer(proj, wmask, maxw, trim=True):

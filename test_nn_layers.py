@@ -145,9 +145,6 @@ class WordAveragingOpTests(unittest.TestCase):
         """
         n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
 
-        # First index is the word index
-        # Second is the character
-        # Third is the batch index
         tmp = numpy.zeros((n_chars, n_samples, 16, n_proj))
         for i in range(n_chars):
             for j in range(n_samples):
