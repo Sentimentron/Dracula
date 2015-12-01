@@ -8,6 +8,81 @@ import theano
 from theano import tensor
 from util import numpy_floatX
 
+import tensorflow as tf
+from tensorflow.models.rnn import rnn_cell, seq2seq
+
+class LSTMLayer(object):
+
+    def __init__(self, model='lstm', rnn_size=140, batch_size=50, seq_length=140, n_proj=16, name='lstm_layer'):
+
+        if model == 'lstm':
+            cell_fn = rnn_cell.BasicLSTMCell
+        else:
+            raise ValueError(("model", model))
+            return
+
+        cell = cell_fn(rnn_size)
+
+        self.input_data = tf.placeholder(tf.float32, [batch_size, seq_length, n_proj])
+        self.targets = tf.placeholder(tf.float32, [batch_size, seq_length, n_proj])
+        self.initial_state = cell.zero_state(batch_size, tf.float32)
+
+        self.outputs, self.states = seq2seq.rnn_decoder(self.inputs, self.initial_state, cell, loop_function=None, scope=name)
+
+        self.outputs = tf.reshape(tf.concat(1, self.outputs))
+
+class LSTMOutputLayer(LSTMLayer):
+
+    def __init__(self, model='lstm', rnn_size=140, batch_size=50, seq_length=140, n_proj=16, name='lstm_layer',
+                 output_size=2, optimizer=None, infer=False):
+        """
+            Initialises the LSTM layer with a softmax class decider
+            :param model: Only 'lstm' is supported
+            :param rnn_size: The number of timesteps to consider at once
+            :param batch_size: Obvious (hopefully) what this is
+            :param seq_length: maximum timestep allowed
+            :param n_proj: number of embedding dimensions at this stage
+            :param name: e.g. 'lstm_layer'
+            :param output_size: number of output classes
+            :param optimizer: The optimizer to use (default tf.train.AdamOptimizer(self.lr))
+            :param infer: whether we're predicting something at the moment or training
+        """
+
+        super(LSTMOutputLayer, self).__init__(model, rnn_size, batch_size, seq_length, n_proj, name)
+
+
+        with tf.variable_scope(name):
+            softmax_w = tf.get_variable("{0}_softmax_w".format(name), [rnn_size, output_size])
+            softmax_b = tf.get_variable("{0}_softmax_b".format(name), [output_size])
+
+        if infer:
+            def loop(prev, _):
+                prev = tf.nn.xw_plus_b(prev, softmax_w, softmax_b)
+                prev_symbol = tf.stop_gradient(tf.argmax(prev, 1))
+                return prev_symbol
+            self.outputs, self.states = seq2seq.rnn_decoder(self.inputs, self.initial_state, cell, loop_function=loop, scope=name)
+            self.outputs = tf.reshape(tf.concat(1, self.outputs))
+
+
+        self.targets = tf.placeholder(tf.int32, [batch_size, seq_length])
+
+        self.logits = tf.nn_xw_plus_b(output, softmax_w, softmax_b)
+        self.probs = tf.nn_softmax(self.logits)
+        loss = seq2seq.sequence_loss_by_example([self.logits],
+                                                [tf.reshape(self.targets, [-1])],
+                                                [tf.ones([batch_size * seq_length])],
+                                                output_size)
+        self.cost = tf.reduce_sum(loss) / batch_size / seq_length
+        self.final_state = self.states[-1]
+        self.lr = tf.Variable(0.0, trainable=False)
+        tvars = tf.trainable_variables()
+
+        grads, _ = tf.clip_by_global_norm(tf.gradients(self.cost, tvars))
+
+        if optimizer is None:
+            optimizer = tf.train.AdamOptimizer(self.lr)
+        self.train_op = optimizer.apply_gradients(zip(grads, tvars))
+
 def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm'):
     """
 
