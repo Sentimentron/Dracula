@@ -29,66 +29,53 @@ class LSTMTests(unittest.TestCase):
                     break
 
         # n_chars, batch_size, n_proj
-        embeddings_layer = numpy.zeros((140, 2, 2), dtype='float32')
-        targets = numpy.zeros((140, 2), dtype='float32')
-        tweets = ["hello", "lollipop"]
+        embeddings_layer = numpy.zeros((10, 140, 2), dtype='float32')
+        mask = numpy.zeros((10, 140), dtype='float32')
+        targets = numpy.zeros((10, 140), dtype='float32')
+        tweets = ["hello", "lollipop", "l", "lll", "lop", "poll", "pol", "ill", "lilp", "pill"]
         for j, t in enumerate(tweets):
             for i, l in enumerate(t):
                 assert l in embeddings
-                embeddings_layer[i, j, :] = embeddings[l]
+                embeddings_layer[j, i, :] = embeddings[l]
+                mask[j, i] = 1.
                 if l == 'l':
-                    targets[i, j] = 1.
+                    targets[j, i] = 1.
+                    mask[j, i] = 100
 
-        # OK: now create the embeddings layer
-        batch_size = 2
-        lstm_state_size = 140
+        #pred_embeddings_layer = numpy.zeros((140, 2, 2), dtype='float32')
+        #tweets = ["olleh", "popillol"]
+        #for j, t in enumerate(tweets):
+        #    for i, l in enumerate(t):
+        #        assert l in embeddings
+        #        pred_embeddings_layer[i, j, :] = embeddings[l]
 
-        cell = rnn_cell.BasicLSTMCell(lstm_state_size)
-        with tf.variable_scope('rnnlm'):
-            softmax_w = tf.get_variable("softmax_w", [lstm_state_size, batch_size])
-            softmax_b = tf.get_variable("softmax_b", [batch_size])
+        train_loss = None
+        with tf.variable_scope("lstm") as scope:
+            layer = LSTMOutputLayer(model='lstm', rnn_size=32, batch_size=10, seq_length=140, n_proj=2, name='lstm_basic',
+                       output_size=2, infer=False)
+            with tf.Session() as sess:
+                tf.initialize_all_variables().run()
+                for e in xrange(20):
+                    sess.run(tf.assign(layer.lr, tf.constant(0.01 * 15.0/(e + 1))))
+                    state = layer.initial_state.eval()
+                    x, y = embeddings_layer, targets
+                    x = tf.transpose(tf.constant(x, dtype='int32'), [1, 0, 2])
+                    y = tf.constant(y, dtype='int32')
+                    feed = {layer.input_data: embeddings_layer,
+                            layer.targets: targets, layer.initial_state: state,
+                            layer.mask: mask}
+                    train_loss, state, _ = sess.run([layer.cost, layer.final_state, layer.train_op], feed)
+                    print("%.2f" % (train_loss,))
+                    pred_layer = layer
+                    feed = {pred_layer.input_data: embeddings_layer, pred_layer.initial_state: state}
+                    [state] = sess.run([pred_layer.final_state], feed)
+                    feed = {pred_layer.input_data: embeddings_layer, pred_layer.initial_state: state}
+                    [probs, state] = sess.run([pred_layer.probs, pred_layer.final_state], feed)
+                    probs = numpy.reshape(probs, (10, 140, 2))
+                    #probs = numpy.transpose(probs, axes=[1, 0, 2])
+                    print probs[1], mask[1], probs.shape
 
-        def loop(prev, _):
-            prev = tf.nn.xw_plus_b(prev, softmax_w, softmax_b)
-            prev_symbol = tf.stop_gradient(tf.argmax(prev, 1))
-
-        inputs = tf.split(0, 140, embeddings_layer_tf)
-        inputs = [tf.squeeze(i, [0]) for i in inputs]
-
-        initial_state = cell.zero_state(batch_size, tf.float32)
-        outputs, states = seq2seq.rnn_decoder(inputs, initial_state, loop_function=loop, scope='rnnlm')
-        output = tf.reshape(tf.concat(1, outputs), [-1, lstm_state_size])
 
 
-        embeddings_layer_tf = tf.constant(embeddings_layer, dtype='float32')
-        encoder_inputs = []
-        for i in range(140):
-            encoder_inputs.append(tf.placeholder(tf.float32, shape=[2, 2], name="encoder{0}".format(i)))
+        self.assertLess(train_loss, 0.05)
 
-        decoder_inputs = []
-        for i in range(140):
-            decoder_inputs.append(tf.placeholder(tf.float32, shape=[2, 2], name="decoder{0}".format(i)))
-
-        targets = [decoder_inputs[i + 1] for i in xrange(len(decoder_inputs) - 1)]
-
-        outputs, losses = seq2seq.basic_rnn_seq2seq(encoder_inputs, decoder_inputs, rnn_cell.BasicLSTMCell(140))
-
-        softmax_w = tf.random_uniform((140, 2))
-        softmax_b = tf.random_uniform(140)
-
-        output, state = seq2seq.basic_rnn_seq2seq()
-
-        output, state = rnn.rnn(rnn_cell.BasicLSTMCell(lstm_state_size), [tf.squeeze(i, [0]) for i in tf.split(0, 140, embeddings_layer_tf)], dtype='float32')
-        #output = [tf.expand_dims(i, 2) for i in output]
-        #output = tf.concat(2, output)
-        print output
-        logits = tf.matmul(output[-1], softmax_w) + softmax_b
-        probabilities = tf.nn.softmax(logits)
-        preds = tf.argmax(probabilities, 0)
-        loss = tf.reduce_mean(tf.square(preds - targets))
-
-        init = tf.initialize_all_variables()
-        sess = tf.Session()
-        sess.run(init)
-
-        print loss.eval(session=sess)
