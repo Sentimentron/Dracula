@@ -36,7 +36,7 @@ class LSTMLayer(object):
                                                         loop_function=None,
                                                         scope=name)
 
-        self.outputs = tf.concat(0, self.outputs)
+        self.outputs = tf.reshape(tf.concat(1, self.outputs), [-1, rnn_size])
         self.final_state = self.states[-1]
 
     def forward(self, sess, input):
@@ -89,7 +89,7 @@ class LSTMOutputLayer(LSTMLayer):
                                                 [tf.reshape(self.mask, [-1])],
                                                 #[tf.ones([batch_size * seq_length])],
                                                 output_size)
-        self.cost = tf.reduce_sum(loss) / batch_size / seq_length
+        self.cost = tf.reduce_sum(loss)
         self.final_state = self.states[-1]
         self.lr = tf.Variable(0.0, trainable=False)
         tvars = tf.trainable_variables()
@@ -99,15 +99,6 @@ class LSTMOutputLayer(LSTMLayer):
         if optimizer is None:
             optimizer = tf.train.AdamOptimizer(self.lr)
         self.train_op = optimizer.apply_gradients(zip(grads, tvars))
-
-    def infer(self):
-        tf.get_variable_scope().reuse_variables()
-        def loop(prev, _):
-            prev = tf.nn.xw_plus_b(prev, softmax_w, softmax_b)
-            prev_symbol = tf.stop_gradient(tf.argmax(prev, 1))
-            return prev_symbol
-        print self.inputs, self.initial_state, self.cell
-        outputs, states = seq2seq.rnn_decoder(self.inputs, self.initial_state, self.cell, loop_function=loop, scope="new")
 
 
 def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm'):

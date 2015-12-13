@@ -52,11 +52,11 @@ class LSTMTests(unittest.TestCase):
         train_loss = None
         with tf.variable_scope("lstm") as scope:
             layer = LSTMOutputLayer(model='lstm', rnn_size=32, batch_size=10, seq_length=140, n_proj=2, name='lstm_basic',
-                       output_size=2, infer=False)
+                                    output_size=2, infer=False)
             with tf.Session() as sess:
                 tf.initialize_all_variables().run()
-                for e in xrange(20):
-                    sess.run(tf.assign(layer.lr, tf.constant(0.01 * 15.0/(e + 1))))
+                for e in xrange(100):
+                    sess.run(tf.assign(layer.lr, tf.constant(0.005)))
                     state = layer.initial_state.eval()
                     x, y = embeddings_layer, targets
                     x = tf.transpose(tf.constant(x, dtype='int32'), [1, 0, 2])
@@ -71,9 +71,7 @@ class LSTMTests(unittest.TestCase):
                     [state] = sess.run([pred_layer.final_state], feed)
                     feed = {pred_layer.input_data: embeddings_layer, pred_layer.initial_state: state}
                     [probs, state] = sess.run([pred_layer.probs, pred_layer.final_state], feed)
-                    probs = numpy.reshape(probs, (10, 140, 2))
-                    #probs = numpy.transpose(probs, axes=[1, 0, 2])
-                    print probs[1], mask[1], probs.shape
+                    print probs[0:len("hello")], probs.shape, probs
 
 
 
