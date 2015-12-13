@@ -64,6 +64,103 @@ def build_tag_dictionary(path, tags={}):
                 tags[tag] = len(tags) + 1
     return tags
 
+def get_max_tweet_length(path):
+    max = 0
+    buf = []
+
+    def estimate_length(buf):
+        return len("".join(buf))
+
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                l = estimate_length(buf)
+                if l > max:
+                    max = l
+                buf = []
+            else:
+                word, tag = line.split()
+                buf.append(word)
+
+        if len(buf) > 0:
+            l = estimate_length(buf)
+            if l > max:
+                max = l
+
+    return max
+
+def get_max_words_in_tweet(path):
+    maxlen = 0
+    subcnt = 0
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                if subcnt > maxlen:
+                    maxlen = subcnt
+                subcnt = 0
+            else:
+                subcnt += 1.0
+        if subcnt > maxlen:
+            maxlen = subcnt
+
+    return maxlen
+
+def get_number_of_tweets(path):
+    ret = 0
+    is_tweet = False
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                if is_tweet:
+                    ret += 1
+                is_tweet = False
+            else:
+                is_tweet = True
+        if is_tweet:
+            ret += 1
+    return ret
+
+def read_data(path, n_proj, chardict, worddict, posdict):
+
+    n_samples = get_number_of_tweets(path)
+    maxlen = get_max_tweet_length(path)+1
+    n_words = get_max_words_in_tweet(path)
+
+    words = numpy.zeros((maxlen, n_samples))
+    chars = numpy.zeros((maxlen, n_samples))
+    tags = numpy.zeros((maxlen, n_samples))
+    wmask = numpy.zeros((n_words + 1, maxlen, n_samples, n_proj))
+
+    tweetidx = 0
+    wordidx = 1
+    charidx = 1
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                tweetidx += 1
+                wordidx = 1
+                charidx = 1
+                continue
+            word, tag = line.split()
+            for c in word:
+                assert c in chardict
+                assert word in worddict
+                assert tag in posdict
+                words[charidx, tweetidx] = worddict[word]
+                chars[charidx, tweetidx] = chardict[c]
+                wmask[wordidx, charidx, tweetidx, :] = numpy.ones((n_proj, ))
+                tags[charidx, tweetidx] = posdict[tag]
+                charidx += 1
+            wordidx += 1
+
+    return wmask, chars, words, tags
+
+
+
 def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, overlap=15, allow_append=True):
 
     if allow_append:
