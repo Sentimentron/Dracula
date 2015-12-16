@@ -138,7 +138,7 @@ class WordAveragingOpTests(unittest.TestCase):
 
         self.assertTrue(numpy.allclose(O, O_actual))
 
-    def test_numpy(self):
+    def test_numpy(self)
         """
         This is the code we're trying to imitate, expresses the intent of
         the per-word averaging layer.

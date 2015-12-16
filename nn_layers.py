@@ -23,7 +23,7 @@ def embeddings_layer(x, Wemb):
 
 def lstm_mask_layer(proj, mask):
     """
-    Removes any spurious output from the LSTM that's not covered by a label
+    Removes any spurioeus output from the LSTM that's not covered by a label
     or doesn't correspond to any real input.
     :param proj: Output of the LSTM layer
     :param mask: 1 if the position is valid, 0 otherwise

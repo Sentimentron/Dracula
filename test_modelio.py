@@ -75,6 +75,11 @@ class TestModelIOMethods(unittest.TestCase):
         maxlen = get_max_words_in_tweet("Data/test_read_1.conll")
         self.assertEquals(maxlen, 10)
 
+    def test_get_maximum_word_offset(self):
+        maxoff = get_max_word_offset("Data/test_read_1.conll")
+
+        self.assertEquals(maxoff, 10)
+
 
     def test_read_data(self):
 

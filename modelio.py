@@ -107,6 +107,19 @@ def get_max_words_in_tweet(path):
 
     return maxlen
 
+def get_max_word_offset(path):
+    maxoffset = 0
+    with open(path, 'r') as fin:
+        for line in fin:
+            line = line.strip()
+            if len(line) == 0:
+                continue
+            word,_ = line.split()
+            if len(word) > maxoffset:
+                maxoffset = len(word)
+
+    return maxoffset+1
+
 def get_number_of_tweets(path):
     ret = 0
     is_tweet = False
