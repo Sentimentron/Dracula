@@ -5,7 +5,7 @@
 """
 
 import unittest
-from modelio import load_pos_tagged_data, prepare_data, get_windowed
+from modelio import load_pos_tagged_data, prepare_data
 
 
 class TestIOMethods(unittest.TestCase):
@@ -93,7 +93,7 @@ class TestIOMethods(unittest.TestCase):
 
     def test_prepare_data(self):
         chars, words, labels = load_pos_tagged_data("Data/test_read_2.conll")
-        xc, xw, x_mask, words_mask, y, y_mask = prepare_data(chars, words, labels)
+        xc, xw, x_mask, words_mask, y, y_mask = prepare_data(chars, words, labels, 15, 2, 4)
 
         print chars
 
@@ -101,7 +101,7 @@ class TestIOMethods(unittest.TestCase):
         self.assertEquals(xc.shape, (15, 10))
         self.assertEquals(xw.shape, (15, 10)) # 15 is also the maximum number of words in a tweet
         self.assertEquals(x_mask.shape, (15, 10))
-        self.assertEquals(words_mask.shape, (15, 10))
+        self.assertEquals(words_mask.shape, (2, 10, 15, 4))
         self.assertEquals(y.shape, (16, 10))
 
         self.assertEquals(list(xc[:, 0]), [1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0])
@@ -112,15 +112,3 @@ class TestIOMethods(unittest.TestCase):
 
         # words mask: must be tested via the word_averaging_layer op
 
-    def test_window(self):
-        seq = "not here darling".split()
-        windowed = get_windowed(seq, 2, 0)
-        self.assertEquals(windowed, [("not", "here"), ("here", "darling")])
-
-    def test_window_2(self):
-        seq = "RT @JosetteSheeran : @WFP #Libya breakthru ! We Move urgently needed #food ( wheat , flour ) by truck convoy into western Libya for 1st time ..."
-        windowed = get_windowed(seq.split(), 16, 15)
-        self.assertEquals(windowed[0], ("RT", "@JosetteSheeran", ":", "@WFP", "#Libya", "breakthru", "!", "We",
-                                        "Move", "urgently", "needed", "#food", "(", "wheat", ",", "flour"))
-        self.assertEquals(windowed[1], (")", "by", "truck", "convoy", "into", "western", "Libya", "for", "1st", "time",
-                                        "..."))

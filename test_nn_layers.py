@@ -4,7 +4,7 @@ import theano.tensor
 import numpy
 import logging
 
-from nn_layers import per_word_averaging_layer
+from nn_layers import per_word_averaging_layer, per_word_averaging_layer_distrib
 
 
 class WordAveragingOpTests(unittest.TestCase):
@@ -40,28 +40,54 @@ class WordAveragingOpTests(unittest.TestCase):
 
         n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
 
+        Wmask = numpy.zeros((16, n_chars, n_samples, n_proj), dtype='int32')
         for i in range(n_chars):
             for j in range(n_samples):
-                W[i, j] = numpy.ravel_multi_index((i, j, W[i, j]), (n_chars, n_samples, 16))
+                Wmask[W[i, j], i, j, :] = numpy.ones((n_proj,))
 
         LArg = theano.tensor.dtensor3()
-        WArg = theano.tensor.imatrix()
+        WArg = theano.tensor.dtensor4()
 
-        out = per_word_averaging_layer(LArg, WArg, False)
+        out = per_word_averaging_layer(LArg, WArg, 16, False)
 
         f = theano.function([LArg, WArg], out, on_unused_input='ignore')
 
-        O_actual = f(L, W)
+        O_actual = f(L, Wmask)
 
         self.assertTrue(numpy.allclose(O, O_actual))
+
+    def test_forward_distrib(self):
+      n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
+
+      ref = numpy.zeros((16, n_chars, n_samples, n_proj))
+      ref[1, 1, 0, :] = [0.2, 0.3, 0.4, 0.5]
+      ref[1, 2, 0, :] = [-0.2, -0.4, 0.6, 0.7]
+      ref[2, 3, 0, :] = [0.8, -0.2, 0.3, -0.1]
+      ref[1, 1, 1, :] = [-0.4, 0.2, 0.8, 0.9]
+
+      Wmask = numpy.zeros((16, n_chars, n_samples, n_proj), dtype='int32')
+
+      for i in range(n_chars):
+        for j in range(n_samples):
+            Wmask[W[i, j], i, j, :] = numpy.ones((n_proj,))
+
+      wmask_arg = theano.tensor.dtensor4()
+      l_arg = theano.tensor.dtensor3()
+
+      out = per_word_averaging_layer_distrib(l_arg, wmask_arg, 16)
+      f = theano.function([l_arg, wmask_arg], out, on_unused_input='ignore')
+
+      O = f(L, Wmask)
+
+      self.assertTrue(numpy.allclose(ref, O))
 
     def test_forward_trimmed(self):
 
         n_chars, n_samples, n_proj, L, W, Oorig = WordAveragingOpTests.get_std()
-
+        Wmask = numpy.zeros((16, n_chars, n_samples, n_proj), dtype='int32')
         for i in range(n_chars):
             for j in range(n_samples):
-                W[i, j] = numpy.ravel_multi_index((i, j, W[i, j]), (n_chars, n_samples, 16))
+                Wmask[W[i, j], i, j, :] = numpy.ones((n_proj,))
 
         # The expected output
         O = numpy.zeros((n_samples, 16, n_proj))
@@ -72,13 +98,13 @@ class WordAveragingOpTests(unittest.TestCase):
         self.assertTrue(numpy.allclose(O[:, :-1], Oorig[:, 1:]))
 
         LArg = theano.tensor.dtensor3()
-        WArg = theano.tensor.imatrix()
+        WArg = theano.tensor.dtensor4()
 
-        out = per_word_averaging_layer(LArg, WArg, True)
+        out = per_word_averaging_layer(LArg, WArg, 16, True)
 
         f = theano.function([LArg, WArg], out, on_unused_input='ignore')
 
-        O_actual = f(L, W)
+        O_actual = f(L, Wmask)
 
         print O
         print Oorig

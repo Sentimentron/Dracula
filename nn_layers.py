@@ -32,7 +32,19 @@ def lstm_mask_layer(proj, mask):
 
     return proj * mask[:, :, None]
 
-def per_word_averaging_layer(proj, wmask, trim=True):
+def per_word_averaging_layer_distrib(proj, wmask, maxw):
+    """
+
+    """
+    dup = [tensor.shape_padaxis(proj, 0) for _ in range(maxw)]
+    dup = tensor.concatenate(dup, 0)
+    #dup = tensor.shape_padaxis(proj, 0)
+
+    mul = tensor.mul(wmask, dup)
+
+    return mul
+
+def per_word_averaging_layer(proj, wmask, maxw, trim=False):
     """
     :param proj: Output of the LSTM layer
     :param wmask: Unravelled 4D-index tensor (represented in 2d)
@@ -42,17 +54,16 @@ def per_word_averaging_layer(proj, wmask, trim=True):
     n_samples = proj.shape[1]
     n_proj = proj.shape[2]
 
-    tmp = tensor.alloc(numpy_floatX(0.0), n_chars * n_samples * 16, n_proj)
-    tmp = theano.tensor.inc_subtensor(tmp[theano.tensor.flatten(wmask)], theano.tensor.reshape(proj, (n_chars * n_samples, n_proj)))
-    tmp = theano.tensor.reshape(tmp, (n_chars, n_samples, 16, n_proj))
-    divider = theano.tensor.neq(tmp, numpy_floatX(0.0)).sum(axis=0)
-    divider += theano.tensor.eq(divider, 0.0)  # Filter NaNs
-    #divider = theano.printing.Print("divider")(divider)
-    tmp = tensor.cast(tmp.sum(axis=0), theano.config.floatX)
-    #tmp = theano.printing.Print("tmp_sum")(tmp)
-    tmp = tmp / divider
-    #tmp = tensor.switch(theano.tensor.neq(tmp, 0.0), 0, tmp.sum(axis=0) / divider)
-    #tmp = tensor.cast(tmp, theano.config.floatX)
+    dist = per_word_averaging_layer_distrib(proj, wmask, maxw)
+
+    dist = dist.dimshuffle(1, 2, 0, 3)
+
+    divider = tensor.cast(tensor.neq(dist, numpy_floatX(0.0)).sum(axis=0), theano.config.floatX)
+    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
+
+    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
+    tmp /= divider
+
     if not trim:
         return tmp
     else:
@@ -60,7 +71,7 @@ def per_word_averaging_layer(proj, wmask, trim=True):
         ret = tensor.set_subtensor(ret[:, :-1], tmp[:, 1:])
         return tensor.cast(ret, theano.config.floatX)
 
-def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask):
+def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask, maxw):
     """
     Produces the final labels via softmax
     :param avg_per_word: Output from word-averaging
@@ -73,7 +84,7 @@ def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask):
     #avg_per_word = theano.printing.Print("avg_per_word")(avg_per_word)
     raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U * dropout_mask) + b),
                               outputs_info=None,
-                              sequences=[avg_per_word, tensor.arange(16)]
+                              sequences=[avg_per_word, tensor.arange(maxw)]
                               )
 
     #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)

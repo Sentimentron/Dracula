@@ -28,7 +28,9 @@ def get_from_server(words, tags):
     print len(response["tags"]), len(tags)
     print tags
     print response["tags"]
-    assert len(response["tags"]) == len(tags)
+    #assert len(response["tags"]) >= len(tags)
+    if len(response["tags"]) != len(tags):
+       return
     text = response["text"].split()
     for i, (r, s) in enumerate(zip(tags, response["tags"])):
         all_tags_ref.append(tag_dict[r])
