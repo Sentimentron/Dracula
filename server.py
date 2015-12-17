@@ -76,7 +76,7 @@ def get_lstm(
 
     # use_noise is for dropout
     (dropout_mask, xc, xw, mask, wmask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, 38)
 
     if decay_c > 0.:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -121,7 +121,7 @@ def hello():
         response["tokenization_errors"] = errors
 
     print chars, words
-    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels)
+    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 32)
 
     print model[-1]['Cemb']
 

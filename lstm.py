@@ -11,7 +11,7 @@ import time
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 from util import get_minibatches_idx
-from modelio import load_pos_tagged_data, prepare_data
+from modelio import load_pos_tagged_data, prepare_data, get_max_word_count, get_max_length
 
 from nn_layers import *
 from nn_lstm import lstm_layer, lstm_unmasked_layer
@@ -29,7 +29,7 @@ numpy.random.seed(SEED)
 
 
 
-def build_model(tparams, options):
+def build_model(tparams, options, maxw):
     dropout_mask = tensor.matrix('dropout_mask', dtype=config.floatX)
 
     xc = tensor.matrix('xc', dtype='int8')
@@ -38,8 +38,7 @@ def build_model(tparams, options):
     xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
     mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    wmask = tensor.matrix('wmask', dtype='int32')
-    wmask.tag.test_value = numpy.random.randint(0, 13, (6, 4))
+    wmask = tensor.ftensor4('wmask')
     y = tensor.matrix('y', dtype='int8')
     y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     y_mask = tensor.matrix('y_mask', dtype='int8')
@@ -60,12 +59,12 @@ def build_model(tparams, options):
 
     #proj = theano.printing.Print("proj", attrs=["shape"])(proj)
 
-    avg_per_word = per_word_averaging_layer(proj, wmask)
+    avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
     proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words")
 
-    pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask)
+    pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask, maxw)
 
     #y = theano.printing.Print("y", attrs=["shape"])(y)
     #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
@@ -102,7 +101,7 @@ def split_at(src, prop):
 
 def train_lstm(
     dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
-    dim_proj_words=48,
+    dim_proj_words=16,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -156,19 +155,24 @@ def train_lstm(
     with open("substitutions.pkl", "rb") as fin:
         word_dict = pickle.load(fin)
 
+    max_word_count = 0
     if not pretrain:
         # Now load the data for real
         train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict, 0)
+        max_word_count = get_max_word_count("Data/TweeboOct27.conll")
         train, valid = split_at(train, 0.05)
         test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict, 16)
+        max_word_count = max(max_word_count, get_max_word_count("Data/TweeboDaily547.conll"))
     else:
         # Pre-populate
         test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
+        max_word_count = get_max_word_count("Data/Brown.conll")
         train, valid = split_at(test, 0.05)
         batch_size = 100
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
     ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
+
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
@@ -191,7 +195,7 @@ def train_lstm(
 
     # use_noise is for dropout
     (dropout_mask, xc, xw, mask, wmask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options)
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
 
     if decay_c > 0.:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -254,7 +258,8 @@ def train_lstm(
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
-                xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y)
+                n_proj = dim_proj_chars + dim_proj_words
+                xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y, 140, max_word_count, n_proj)
                 n_samples += xc.shape[1]
 
                 assert xc.shape == xw.shape
@@ -282,10 +287,9 @@ def train_lstm(
 
                 if numpy.mod(uidx, validFreq) == 0:
                     dropout_mask = numpy.ones(params['U'].shape).astype(dtype=theano.config.floatX)
-                    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf)
-                    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid,
-                                           kf_valid)
-                    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test)
+                    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
+                    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
+                    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
 
                     history_errs.append([valid_err, test_err])
 
@@ -324,9 +328,9 @@ def train_lstm(
 
     dropout_mask = numpy.ones(params['U'].shape, dtype=theano.config.floatX)
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf_train_sorted)
-    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid, kf_valid)
-    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test)
+    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf_train_sorted, 140, max_word_count, n_proj)
+    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
+    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
 
     logging.info("Train %.4f, Valid %.4f, Test %.4f",
                                      100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
