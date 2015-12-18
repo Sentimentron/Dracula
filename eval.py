@@ -28,9 +28,8 @@ def get_from_server(words, tags):
     print len(response["tags"]), len(tags)
     print tags
     print response["tags"]
-    #assert len(response["tags"]) >= len(tags)
     if len(response["tags"]) != len(tags):
-       return
+	return
     text = response["text"].split()
     for i, (r, s) in enumerate(zip(tags, response["tags"])):
         all_tags_ref.append(tag_dict[r])
@@ -50,19 +49,22 @@ with open(sys.argv[1]) as fin:
     # Read the file in CONLL format
     words, tags = [], []
     for line in fin:
-        line = line.strip().decode('utf8')
+        line = line.decode('utf8').strip()
         if len(line) == 0:
             # Update the results with what comes back
             get_from_server(words, tags)
             words, tags = [], []
             continue
-        word, tag = line.split()
-        if tag not in tag_dict:
-            tag_dict[tag] = len(tag_dict)
-            inv_tag_dict[tag_dict[tag]] = tag
+	try:
+		word, tag = line.split()
+		if tag not in tag_dict:
+		    tag_dict[tag] = len(tag_dict)
+		    inv_tag_dict[tag_dict[tag]] = tag
 
-        words.append(word)
-        tags.append(tag)
+		words.append(word)
+		tags.append(tag)
+	except ValueError:
+		continue
 
     assert len(words) == 0
 

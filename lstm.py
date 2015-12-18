@@ -100,7 +100,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
     dim_proj_words=16,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
@@ -169,6 +169,7 @@ def train_lstm(
         max_word_count = get_max_word_count("Data/Brown.conll")
         train, valid = split_at(test, 0.05)
         batch_size = 100
+	max_word_count = 38	# HACK: set to the same as Twitter
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
     ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
