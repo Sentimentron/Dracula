@@ -15,7 +15,7 @@ from collections import defaultdict, Counter
 model = None
 
 def get_lstm(
-    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
     dim_proj_words=16,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
@@ -121,7 +121,7 @@ def hello():
         response["tokenization_errors"] = errors
 
     print chars, words
-    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 32)
+    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 64)
 
     print model[-1]['Cemb']
 
@@ -132,6 +132,7 @@ def hello():
 
     words, windows = pred.shape
     print windows, words
+    assert windows == 1
     tag_counter = defaultdict(Counter)
 
     # Scan along each 16-word window,

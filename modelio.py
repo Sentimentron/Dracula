@@ -227,6 +227,9 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
                 # This current character is a space
                 # Increase the word count and continue
                 c += 1
+		if c >= 38:
+			logging.warning("truncation")
+			break	
                 continue
 
             words_mask[c, j, idx, :] = numpy.ones((n_proj,))
