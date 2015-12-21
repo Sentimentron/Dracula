@@ -77,7 +77,7 @@ def build_model(tparams, options, maxw):
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
 
-    cost = cost[tensor.neq(y, 0)].mean()
+    cost = cost.mean()
 
     return dropout_mask, xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
 
