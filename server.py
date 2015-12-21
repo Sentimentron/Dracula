@@ -128,7 +128,7 @@ def hello():
         for idx, i in enumerate(pred[:, winidx]):
             wordidx = winidx + idx
             if i == 0:
-                break
+                continue
             t = model[-1]['inv_pos_dict'][i]
             tag_counter[wordidx].update([t])
 
