@@ -28,8 +28,7 @@ def get_from_server(words, tags):
     print len(response["tags"]), len(tags)
     print tags
     print response["tags"]
-    if len(response["tags"]) != len(tags):
-	return
+    assert len(response["tags"]) == len(tags)
     text = response["text"].split()
     for i, (r, s) in enumerate(zip(tags, response["tags"])):
         all_tags_ref.append(tag_dict[r])
@@ -44,27 +43,32 @@ def get_from_server(words, tags):
             except:
                 print "WRONG: %s should be %s (times wrong %d)" % (s, r, wrong_dict[(r, s)])
 
+    print("Accuracy %.4f", accuracy_score(all_tags_ref, all_tags_resp))
+
 
 with open(sys.argv[1]) as fin:
     # Read the file in CONLL format
-    words, tags = [], []
+    words, lengths, tags = [], [], []
     for line in fin:
         line = line.decode('utf8').strip()
         if len(line) == 0:
             # Update the results with what comes back
             get_from_server(words, tags)
             words, tags = [], []
+            lengths = []
             continue
-	try:
-		word, tag = line.split()
-		if tag not in tag_dict:
-		    tag_dict[tag] = len(tag_dict)
-		    inv_tag_dict[tag_dict[tag]] = tag
+        try:
+            word, tag = line.split()
+            if tag not in tag_dict:
+                tag_dict[tag] = len(tag_dict)
+                inv_tag_dict[tag_dict[tag]] = tag
 
-		words.append(word)
-		tags.append(tag)
-	except ValueError:
-		continue
+            if len(word) + sum(lengths) < 140:
+                words.append(word)
+                tags.append(tag)
+                lengths.append(len(words))
+        except ValueError:
+                continue
 
     assert len(words) == 0
 

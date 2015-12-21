@@ -135,7 +135,6 @@ def string_to_unprepared_format(text, chardict, worddict):
         for word in text.split():
             if word not in worddict:
                 raise Exception((word, "not in dictionary"))
-            word = unicode(word).encode('utf8')
             line = '%s\t?\n' % (word,)
             fp.write(line)
             #           print >> fp, "%s\t?" % (word,)
