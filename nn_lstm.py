@@ -8,7 +8,7 @@ import theano
 from theano import tensor
 from util import numpy_floatX
 
-def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm'):
+def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1):
     """
 
     :param tparams:
@@ -36,10 +36,10 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm'):
         preact = tensor.dot(h_, tparams[_p(prefix, 'U')])
         preact += x_
 
-        i = tensor.nnet.sigmoid(_slice(preact, 0, options['dim_proj']))
-        f = tensor.nnet.sigmoid(_slice(preact, 1, options['dim_proj']))
-        o = tensor.nnet.sigmoid(_slice(preact, 2, options['dim_proj']))
-        c = tensor.tanh(_slice(preact, 3, options['dim_proj']))
+        i = tensor.nnet.sigmoid(_slice(preact, 0, options['dim_proj']*mult))
+        f = tensor.nnet.sigmoid(_slice(preact, 1, options['dim_proj']*mult))
+        o = tensor.nnet.sigmoid(_slice(preact, 2, options['dim_proj']*mult))
+        c = tensor.tanh(_slice(preact, 3, options['dim_proj']*mult))
 
         c = f * c_ + i * c
 
@@ -50,7 +50,7 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm'):
     state_below = (tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
                    tparams[_p(prefix, 'b')])
 
-    dim_proj = options['dim_proj']
+    dim_proj = options['dim_proj']*mult
     rval, updates = theano.scan(_step,
                                 sequences=[state_below],
                                 outputs_info=[tensor.cast(tensor.alloc(numpy_floatX(0.),
@@ -64,7 +64,7 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm'):
     return rval[0]
 
 
-def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None):
+def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, go_backwards=False):
     """
 
     :param tparams:
@@ -121,5 +121,5 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None):
                                                            n_samples,
                                                            dim_proj)],
                                 name=_p(prefix, '_layers'),
-                                n_steps=nsteps)
+                                n_steps=nsteps, go_backwards=go_backwards)
     return rval[0]
