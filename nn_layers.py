@@ -64,6 +64,14 @@ def per_word_averaging_layer(proj, wmask, maxw, trim=False):
     tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
     tmp /= divider
 
+    # tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
+
+    _max = dist.max(axis=0)
+    _min = dist.min(axis=0)
+
+    tmp = tensor.concatenate([tmp, _max, _min], axis=2)
+    #    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
+
     if not trim:
         return tmp
     else:

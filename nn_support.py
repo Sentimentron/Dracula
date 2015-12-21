@@ -46,9 +46,10 @@ def pred_error(dropout_mask, f_pred, prepare_data, data, iterator, maxlen, maxw,
                                                  [data[1][t] for t in valid_index],
                                                  numpy.array(data[2])[valid_index],
                                                  maxlen, maxw, n_proj)
-        preds = f_pred(dropout_mask, xc, xw, mask, wmask, y_mask)
-        acc = numpy.equal(preds, y)
-        valid_shapes.append(preds.shape[0] * preds.shape[1])
+        preds = f_pred(dropout_mask, xc, mask, wmask, y_mask)
+        preds = preds[numpy.nonzero(y)]
+        acc = numpy.equal(preds, y[numpy.nonzero(y)])
+        valid_shapes.append(preds.size)
         valid_err.append(acc.sum())
 
     valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() / numpy.asarray(valid_shapes).sum()

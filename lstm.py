@@ -33,7 +33,6 @@ def build_model(tparams, options, maxw):
     dropout_mask = tensor.matrix('dropout_mask', dtype=config.floatX)
 
     xc = tensor.matrix('xc', dtype='int8')
-    xw = tensor.matrix('xw', dtype='int32')
 
     xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
     mask = tensor.matrix('mask', dtype=config.floatX)
@@ -46,31 +45,30 @@ def build_model(tparams, options, maxw):
     n_timesteps = xc.shape[0]
     n_samples = xc.shape[1]
 
-    emb1 = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj_chars'])
-    emb2 = embeddings_layer(xw, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj_words'])
+    emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
+    #    emb2 = embeddings_layer(xw, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj_words'])
 
-    emb = tensor.concatenate([emb1, emb2], axis=2)
+    #emb = tensor.concatenate([emb1, emb2], axis=2)
 
     #emb = theano.printing.Print("emb", attrs=["shape"])(emb)
 
     proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
-
-    proj = lstm_mask_layer(proj, mask)
 
     #proj = theano.printing.Print("proj", attrs=["shape"])(proj)
 
     avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
-    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words")
+    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words", mult=3)
+    proj3 = lstm_unmasked_layer(tparams, proj2, options, prefix="lstm_words_2", mult=3)
 
-    pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask, maxw)
+    pred = softmax_layer(dropout_mask, proj3, tparams['U'], tparams['b'], y_mask, maxw)
 
     #y = theano.printing.Print("y", attrs=["shape"])(y)
     #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
-    f_pred_prob = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([dropout_mask, xc, xw, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred_prob = theano.function([dropout_mask, xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([dropout_mask, xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
@@ -79,9 +77,9 @@ def build_model(tparams, options, maxw):
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
 
-    cost = cost.mean()
+    cost = cost[tensor.neq(y, 0)].mean()
 
-    return dropout_mask, xc, xw, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
+    return dropout_mask, xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
     src_chars, src_words, src_labels = [], [], []
@@ -195,7 +193,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (dropout_mask, xc, xw, mask, wmask,
+    (dropout_mask, xc, mask, wmask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
 
     if decay_c > 0.:
@@ -205,14 +203,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([dropout_mask, xc, xw, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([dropout_mask, xc, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([dropout_mask, xc, xw, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([dropout_mask, xc, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        dropout_mask, xc, xw, mask, wmask, y, y_mask, cost)
+                                        dropout_mask, xc, mask, wmask, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -259,13 +257,13 @@ def train_lstm(
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
-                n_proj = dim_proj_chars + dim_proj_words
+                n_proj = dim_proj_chars# + dim_proj_words
                 xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y, 140, max_word_count, n_proj)
                 n_samples += xc.shape[1]
 
                 assert xc.shape == xw.shape
 
-                cost = f_grad_shared(dropout_mask, xc, xw, mask, wmask, y, y_mask)
+                cost = f_grad_shared(dropout_mask, xc, mask, wmask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):

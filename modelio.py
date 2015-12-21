@@ -143,39 +143,6 @@ def string_to_unprepared_format(text, chardict, worddict):
     chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
     return [], chars, words, labels
 
-    errors = []
-    words, chars, labels = [], [], []
-    cur_chars, cur_words, cur_labels = [], [], []
-    for word in text.split():
-        if word not in worddict:
-            errors.append("%s not in word dictionary" % (word, ))
-            wordidx = 0
-        else:
-            wordidx = worddict[word]
-
-        for c in word:
-            if c not in chardict:
-                errors.append("%s not in char dictionary" % (c, ))
-                charidx = 0
-            else:
-                charidx = chardict[c]
-
-            chars.append(charidx)
-            words.append(wordidx)
-            labels.append(0)
-
-        chars.append(0)
-        words.append(wordidx)
-        labels.append(0)
-
-        cur_words.append(words)
-        cur_chars.append(chars)
-        cur_labels.append(labels)
-
-        chars, words, labels = [], [], []
-
-    return errors, cur_chars, cur_words, cur_labels
-
 def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
     """
     Create the matrices from the datasets.
@@ -229,7 +196,7 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
                 c += 1
 		if c >= 38:
 			logging.warning("truncation")
-			break	
+			break
                 continue
 
             words_mask[c, j, idx, :] = numpy.ones((n_proj,))

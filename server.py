@@ -75,7 +75,7 @@ def get_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (dropout_mask, xc, xw, mask, wmask,
+    (dropout_mask, xc, mask, wmask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, 38)
 
     if decay_c > 0.:
@@ -91,43 +91,30 @@ def get_lstm(
 
     model_options['inv_pos_dict'] = inv_tag_dict
 
-    return dropout_mask, xc, xw, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost, model_options
+    return dropout_mask, xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost, model_options
 
 @app.route("/api/tag", methods=["GET"])
 def hello():
     global model
 
-    text = request.args.get("text", "")
+    text = request.args.get("text", "").encode('utf8')
 
     response = {}
     if text is None or len(text) == 0:
         response["error"] = "no text provided"
     response["text"] = text
 
-    text = text.split()
-    rebuilt_text = []
-    for t in text:
-        if t not in model[-1]['word_dict']:
-            matcher = model[-1]['matcher']
-            _, r = matcher.get_most_similar_word(t)
-            rebuilt_text.append(r.decode('utf8'))
-        else:
-            rebuilt_text.append(t)
-
-    rebuilt_text = ' '.join(rebuilt_text)
-    response['prepared_text'] = rebuilt_text
-    errors, chars, words, labels = string_to_unprepared_format(rebuilt_text, model[-1]['char_dict'], model[-1]['word_dict'])
+    response['prepared_text'] = text
+    errors, chars, words, labels = string_to_unprepared_format(text, model[-1]['char_dict'], model[-1]['word_dict'])
     if len(errors) > 0:
         response["tokenization_errors"] = errors
 
     print chars, words
-    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 64)
+    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 48)
 
-    print model[-1]['Cemb']
+    dropout_mask = numpy.ones(model[-1]['U'].shape).astype(dtype=theano.config.floatX) * 1.0
 
-    dropout_mask = numpy.ones(model[-1]['U'].shape).astype(dtype=theano.config.floatX) * 0.5
-
-    pred = model[-3](dropout_mask, xc, xw, mask, wmask, y_mask)
+    pred = model[-3](dropout_mask, xc, mask, wmask, y_mask)
     print pred
 
     words, windows = pred.shape
@@ -149,7 +136,7 @@ def hello():
     response['tags'] = []
     response['tags_and_text'] = []
 
-    text = text
+    text = text.split(' ')
     for idx in sorted(tag_counter):
         if len(tag_counter[idx]) == 0:
             break
@@ -172,7 +159,7 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG)
 
     # Build the model
-    model = get_lstm(reload_model="pretrained_model.npz")
+    model = get_lstm(reload_model="lstm_model.npz")
 
     print "Starting server..."
     app.run(debug=True)
