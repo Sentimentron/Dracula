@@ -9,6 +9,7 @@ import cPickle as pkl
 import time
 
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
+from theano.tensor.shared_randomstreams import RandomStreams
 
 from util import get_minibatches_idx
 from modelio import load_pos_tagged_data, prepare_data, get_max_word_count, get_max_length
@@ -27,11 +28,7 @@ import pickle
 SEED = 123
 numpy.random.seed(SEED)
 
-
-
-def build_model(tparams, options, maxw):
-    dropout_mask = tensor.matrix('dropout_mask', dtype=config.floatX)
-
+def build_model(tparams, options, maxw, training=True):
     xc = tensor.matrix('xc', dtype='int8')
 
     xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
@@ -63,15 +60,14 @@ def build_model(tparams, options, maxw):
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
     proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words", mult=6)
-    #proj3 = lstm_unmasked_layer(tparams, proj2, options, prefix="lstm_words_2", mult=6)
+    proj3 = lstm_unmasked_layer(tparams, proj2, options, prefix="lstm_words_2", mult=6, go_backwards=True)
 
-    pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask, maxw)
+    proj4 = theano.tensor.concatenate([proj2, proj3], axis=2)
 
-    #y = theano.printing.Print("y", attrs=["shape"])(y)
-    #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+    pred = softmax_layer(proj4, tparams['U'], tparams['b'], y_mask, maxw, training)
 
-    f_pred_prob = theano.function([dropout_mask, xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([dropout_mask, xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred_prob = theano.function([xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
@@ -82,7 +78,7 @@ def build_model(tparams, options, maxw):
 
     cost = cost.mean()
 
-    return dropout_mask, xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
+    return xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
     src_chars, src_words, src_labels = [], [], []
@@ -195,7 +191,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (dropout_mask, xc, mask, wmask,
+    (xc, mask, wmask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
 
     if decay_c > 0.:
@@ -205,14 +201,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([dropout_mask, xc, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([xc, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([dropout_mask, xc, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([xc, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        dropout_mask, xc, mask, wmask, y, y_mask, cost)
+                                        xc, mask, wmask, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -247,9 +243,6 @@ def train_lstm(
 
             for _, train_index in kf:
                 uidx += 1
-                dropout_mask = numpy.random.binomial(1, 0.5, params['U'].shape).astype(theano.config.floatX)
-                assert numpy.max(dropout_mask) == 1.
-                assert numpy.min(dropout_mask) == 0.
 
                 # Select the random examples for this minibatch
                 y = [train[2][t] for t in train_index]
@@ -265,7 +258,7 @@ def train_lstm(
 
                 assert xc.shape == xw.shape
 
-                cost = f_grad_shared(dropout_mask, xc, mask, wmask, y, y_mask)
+                cost = f_grad_shared(xc, mask, wmask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
@@ -287,12 +280,11 @@ def train_lstm(
                     logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
-                    dropout_mask = numpy.ones(params['U'].shape).astype(dtype=theano.config.floatX)
-                    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
+                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
 
                     if not pretrain:
-                        train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
-                        test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
+                        train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
+                        test_err = pred_error(f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
                         history_errs.append([valid_err, test_err])
                     else:
                         history_errs.append([valid_err, 0.0])
@@ -332,11 +324,10 @@ def train_lstm(
     else:
         best_p = unzip(tparams)
 
-    dropout_mask = numpy.ones(params['U'].shape, dtype=theano.config.floatX)
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf_train_sorted, 140, max_word_count, n_proj)
-    valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
-    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
+    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, 140, max_word_count, n_proj)
+    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
+    test_err = pred_error(f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
 
     logging.info("Train %.4f, Valid %.4f, Test %.4f",
                                      100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))

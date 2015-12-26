@@ -5,7 +5,7 @@
 import theano
 from theano import tensor
 from util import numpy_floatX
-
+from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
 def embeddings_layer(x, Wemb, n_timesteps, n_samples, dim_proj):
     """
@@ -79,7 +79,7 @@ def per_word_averaging_layer(proj, wmask, maxw, trim=False):
         ret = tensor.set_subtensor(ret[:, :-1], tmp[:, 1:])
         return tensor.cast(ret, theano.config.floatX)
 
-def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask, maxw):
+def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     """
     Produces the final labels via softmax
     :param avg_per_word: Output from word-averaging
@@ -90,10 +90,18 @@ def softmax_layer(dropout_mask, avg_per_word, U, b, y_mask, maxw):
     :return: Softmax predictions
     """
     #avg_per_word = theano.printing.Print("avg_per_word")(avg_per_word)
-    raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U * dropout_mask) + b),
-                              outputs_info=None,
-                              sequences=[avg_per_word, tensor.arange(maxw)]
-                              )
+    if training:
+        srng = RandomStreams(seed=12345)
+        dropout_mask = tensor.cast(srng.binomial(size=(16*12, 27), p=0.5), theano.config.floatX) # TODO: don't hard code me
+        raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tensor.mul(U, dropout_mask)) + b),
+                                  outputs_info=None,
+                                  sequences=[avg_per_word, tensor.arange(maxw)]
+                                  )
+    else:
+        raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U) + b),
+                                  outputs_info=None,
+                                  sequences=[avg_per_word, tensor.arange(maxw)]
+                                  )
 
     #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
     #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)

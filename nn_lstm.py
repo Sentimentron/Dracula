@@ -8,7 +8,7 @@ import theano
 from theano import tensor
 from util import numpy_floatX
 
-def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1):
+def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1, go_backwards=False):
     """
 
     :param tparams:
@@ -60,7 +60,8 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1):
                                                            n_samples,
                                                            dim_proj), theano.config.floatX)],
                                 name=_p(prefix, '_layers'),
-                                n_steps=nsteps)
+                                n_steps=nsteps,
+                                go_backwards=go_backwards)
     return rval[0]
 
 
