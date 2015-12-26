@@ -52,17 +52,20 @@ def build_model(tparams, options, maxw):
 
     #emb = theano.printing.Print("emb", attrs=["shape"])(emb)
 
-    proj = lstm_layer(tparams, emb, options, "lstm", mask=mask)
+    proj_chars_1 = lstm_layer(tparams, emb, options, "lstm_chars_forwards", mask=mask)
+    proj_chars_2 = lstm_layer(tparams, emb, options, "lstm_chars_backwards", mask=mask, go_backwards=True)
 
     #proj = theano.printing.Print("proj", attrs=["shape"])(proj)
+
+    proj = theano.tensor.concatenate([proj_chars_1, proj_chars_2], axis=2)
 
     avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
-    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words", mult=3)
-    proj3 = lstm_unmasked_layer(tparams, proj2, options, prefix="lstm_words_2", mult=3)
+    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words", mult=6)
+    #proj3 = lstm_unmasked_layer(tparams, proj2, options, prefix="lstm_words_2", mult=6)
 
-    pred = softmax_layer(dropout_mask, proj3, tparams['U'], tparams['b'], y_mask, maxw)
+    pred = softmax_layer(dropout_mask, proj2, tparams['U'], tparams['b'], y_mask, maxw)
 
     #y = theano.printing.Print("y", attrs=["shape"])(y)
     #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
@@ -98,7 +101,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
     dim_proj_words=16,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
@@ -166,7 +169,6 @@ def train_lstm(
         test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
         max_word_count = get_max_word_count("Data/Brown.conll")
         train, valid = split_at(test, 0.05)
-        batch_size = 100
 	max_word_count = 38	# HACK: set to the same as Twitter
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
@@ -286,11 +288,14 @@ def train_lstm(
 
                 if numpy.mod(uidx, validFreq) == 0:
                     dropout_mask = numpy.ones(params['U'].shape).astype(dtype=theano.config.floatX)
-                    train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
                     valid_err = pred_error(dropout_mask, f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
-                    test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
 
-                    history_errs.append([valid_err, test_err])
+                    if not pretrain:
+                        train_err = pred_error(dropout_mask, f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
+                        test_err = pred_error(dropout_mask, f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
+                        history_errs.append([valid_err, test_err])
+                    else:
+                        history_errs.append([valid_err, 0.0])
 
                     if (uidx == 0 or
                         valid_err <= numpy.array(history_errs)[:,
@@ -298,9 +303,11 @@ def train_lstm(
 
                         best_p = unzip(tparams)
                         bad_counter = 0
-
-                    logging.info("Train %.4f, Valid %.4f, Test %.4f",
-                                 100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
+                    if not pretrain:
+                        logging.info("Train %.4f, Valid %.4f, Test %.4f",
+                                     100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
+                    else:
+                        logging.info("Valid %.4f", 100 * (1-valid_err))
 
                     if (len(history_errs) > patience and
                         valid_err >= numpy.array(history_errs)[:-patience,
