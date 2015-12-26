@@ -31,8 +31,7 @@ def load_params(path, params):
     logging.info("Loading model from file '%s'...", path)
     pp = numpy.load(path)
     for k in pp:
-        if k in ['Cemb', 'Wemb', 'lstm_W', 'lstm_b', 'lstm_U', 'lstm_words_W', 'lstm_words_b', 'lstm_words_U', 'U', 'b', 'lstm_words_2_W', 'lstm_words_2_b', 'lstm_words_2_U']:
-            params[k] = pp[k]
+        params[k] = pp[k]
     path = "%s.pkl" % (path,)
     logging.info("Loading model from file '%s'...", path)
     with open(path, 'rb') as fin:

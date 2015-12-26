@@ -47,17 +47,21 @@ def generate_init_params(options, params):
 
     params = param_init_lstm(options,
                              params,
-                             prefix="lstm")
+                             prefix="lstm_chars_forwards")
+    
+    params = param_init_lstm(options,
+                             params,
+                             prefix="lstm_chars_backwards")
 
     params = param_init_lstm(options,
                              params,
-                             prefix="lstm_words", mult=3)
+                             prefix="lstm_words", mult=6)
 
-    params = param_init_lstm(options,
-                             params,
-                             prefix="lstm_words_2", mult=3)
+    #params = param_init_lstm(options,
+    #                         params,
+    #                         prefix="lstm_words_2", mult=6)
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*3,
+    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*6,
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
