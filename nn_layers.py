@@ -92,7 +92,9 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     #avg_per_word = theano.printing.Print("avg_per_word")(avg_per_word)
     if training:
         srng = RandomStreams(seed=12345)
-        dropout_mask = tensor.cast(srng.binomial(size=(16*12, 27), p=0.5), theano.config.floatX) # TODO: don't hard code me
+        dropout_mask = tensor.cast(srng.binomial(size=U.shape, p=0.5), theano.config.floatX)
+        #U = theano.printing.Print("U", attrs=["shape"])(U)
+        #dropout_mask = theano.printing.Print("dropout_mask", attrs=["shape"])(dropout_mask)
         raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tensor.mul(U, dropout_mask)) + b),
                                   outputs_info=None,
                                   sequences=[avg_per_word, tensor.arange(maxw)]
