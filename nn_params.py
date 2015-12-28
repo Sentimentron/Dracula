@@ -60,6 +60,10 @@ def generate_init_params(options, params):
     params = param_init_lstm(options,
                              params,
                              prefix="lstm_words_2", mult=6)
+    
+    params = param_init_lstm(options,
+                             params,
+                             prefix="lstm_words_3", mult=12)
     # classifier
     params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*12,
                                             options['ydim']).astype(config.floatX)

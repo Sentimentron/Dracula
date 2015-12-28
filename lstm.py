@@ -64,7 +64,9 @@ def build_model(tparams, options, maxw, training=True):
 
     proj4 = theano.tensor.concatenate([proj2, proj3], axis=2)
 
-    pred = softmax_layer(proj4, tparams['U'], tparams['b'], y_mask, maxw, training)
+    proj5 = lstm_unmasked_layer(tparams, proj4, options, prefix="lstm_words_3", mult=12)
+
+    pred = softmax_layer(proj5, tparams['U'], tparams['b'], y_mask, maxw, training)
 
     f_pred_prob = theano.function([xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
