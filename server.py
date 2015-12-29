@@ -15,8 +15,6 @@ from collections import defaultdict, Counter
 model = None
 
 def get_lstm(
-    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
-    dim_proj_words=16,
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -50,12 +48,6 @@ def get_lstm(
     for w in word_dict.keys():
         word_dict[w.decode('utf8')] = word_dict[w]
     pos_dict = model_options['pos_dict']
-
-    print "Creating matcher..."
-    matcher = MultiSimilarityMatcher()
-    matcher.update_from_dict(word_dict)
-    model_options['matcher'] = matcher
-
     print "Continuing with model..."
     ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
 
@@ -75,8 +67,8 @@ def get_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (dropout_mask, xc, mask, wmask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, 38)
+    (xc, mask, wmask,
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, 38, True)
 
     if decay_c > 0.:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -91,7 +83,7 @@ def get_lstm(
 
     model_options['inv_pos_dict'] = inv_tag_dict
 
-    return dropout_mask, xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost, model_options
+    return xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost, model_options
 
 @app.route("/api/tag", methods=["GET"])
 def hello():
@@ -110,11 +102,10 @@ def hello():
         response["tokenization_errors"] = errors
 
     print chars, words
-    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 48)
+    # TODO: 32 is the n_proj
+    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 32)
 
-    dropout_mask = numpy.ones(model[-1]['U'].shape).astype(dtype=theano.config.floatX) * 1.0
-
-    pred = model[-3](dropout_mask, xc, mask, wmask, y_mask)
+    pred = model[-3](xc, mask, wmask, y_mask)
     print pred
 
     words, windows = pred.shape

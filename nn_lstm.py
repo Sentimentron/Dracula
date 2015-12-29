@@ -65,7 +65,7 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1, go
     return rval[0]
 
 
-def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, go_backwards=False):
+def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, go_backwards=False, mult=1):
     """
 
     :param tparams:
@@ -112,7 +112,7 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, go_backw
     state_below = (tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
                    tparams[_p(prefix, 'b')])
 
-    dim_proj = options['dim_proj']
+    dim_proj = options['dim_proj'] * mult
     rval, updates = theano.scan(_step,
                                 sequences=[mask, state_below],
                                 outputs_info=[tensor.alloc(numpy_floatX(0.),
