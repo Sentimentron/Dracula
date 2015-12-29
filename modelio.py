@@ -133,8 +133,8 @@ def string_to_unprepared_format(text, chardict, worddict):
 
     with open('sample.conll', 'wb') as fp:
         for word in text.split():
-            if word not in worddict:
-                raise Exception((word, "not in dictionary"))
+            #if word not in worddict:
+            #    raise Exception((word, "not in dictionary"))
             line = '%s\t?\n' % (word,)
             fp.write(line)
             #           print >> fp, "%s\t?" % (word,)
