@@ -5,7 +5,6 @@ from modelio import string_to_unprepared_format, prepare_data
 from nn_params import *
 from nn_optimizers import *
 from nn_serialization import load_params
-from matcher import MultiSimilarityMatcher
 
 from flask import Flask, request, jsonify
 app = Flask(__name__)

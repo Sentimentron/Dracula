@@ -22,7 +22,6 @@ def init_params(options, reloaded=False):
     params = OrderedDict()
 
     # Embedding setup
-    logging.debug("dim_proj_chars = %d, dim_proj_words = %d", options['dim_proj_chars'], options['dim_proj_words'])
     options['dim_proj'] = options['dim_proj_chars']# + options['dim_proj_words']
     logging.debug("dim_proj = %d", options['dim_proj'])
 
@@ -42,9 +41,6 @@ def generate_init_params(options, params):
                               options['dim_proj_chars'])*2 - 1
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
 
-    randn = numpy.random.rand(options['n_words'],
-                              options['dim_proj_words'])
-
     params = param_init_lstm(options,
                              params,
                              prefix="lstm_chars_forwards")
@@ -55,17 +51,14 @@ def generate_init_params(options, params):
 
     params = param_init_lstm(options,
                              params,
-                             prefix="lstm_words", mult=6)
+                             prefix="lstm_words", mult=3)
 
     params = param_init_lstm(options,
                              params,
-                             prefix="lstm_words_2", mult=6)
-    
-    params = param_init_lstm(options,
-                             params,
-                             prefix="lstm_words_3", mult=12)
+                             prefix="lstm_words_2", mult=3)
+
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*12,
+    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*3,
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 

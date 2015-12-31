@@ -52,21 +52,17 @@ def build_model(tparams, options, maxw, training=True):
     proj_chars_1 = lstm_layer(tparams, emb, options, "lstm_chars_forwards", mask=mask)
     proj_chars_2 = lstm_layer(tparams, emb, options, "lstm_chars_backwards", mask=mask, go_backwards=True)
 
-    #proj = theano.printing.Print("proj", attrs=["shape"])(proj)
-
-    proj = theano.tensor.concatenate([proj_chars_1, proj_chars_2], axis=2)
+    proj = proj_chars_1 + proj_chars_2
 
     avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
-    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words", mult=6)
-    proj3 = lstm_unmasked_layer(tparams, proj2, options, prefix="lstm_words_2", mult=6, go_backwards=True)
+    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words", mult=3)
+    proj3 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words_2", mult=3, go_backwards=True)
 
-    proj4 = theano.tensor.concatenate([proj2, proj3], axis=2)
+    proj4 = proj2 + proj3
 
-    proj5 = lstm_unmasked_layer(tparams, proj4, options, prefix="lstm_words_3", mult=12)
-
-    pred = softmax_layer(proj5, tparams['U'], tparams['b'], y_mask, maxw, training)
+    pred = softmax_layer(proj4, tparams['U'], tparams['b'], y_mask, maxw, training)
 
     f_pred_prob = theano.function([xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
@@ -99,7 +95,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -159,8 +155,9 @@ def train_lstm(
         train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict, 0)
         max_word_count = get_max_word_count("Data/TweeboOct27.conll")
         test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict, 16)
-        test, valid = split_at(train, 0.05)
+        test, valid = split_at(test, 0.10)
         max_word_count = max(max_word_count, get_max_word_count("Data/TweeboDaily547.conll"))
+        batch_size = 50
     else:
         # Pre-populate
         test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)

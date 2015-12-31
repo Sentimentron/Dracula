@@ -8,6 +8,7 @@ import numpy
 import theano
 import logging
 import sys
+import tempfile
 
 from collections import defaultdict
 
@@ -164,7 +165,7 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
     x_c = numpy.zeros((maxlen, n_samples)).astype('int8')
     x_w = numpy.zeros((maxlen, n_samples)).astype('int32')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
-    words_mask = numpy.zeros((maxw, maxlen, n_samples, n_proj*2)).astype(theano.config.floatX)
+    words_mask = numpy.zeros((maxw, maxlen, n_samples, n_proj)).astype(theano.config.floatX)
     y = numpy.zeros((maxw, n_samples)).astype('int8')
     y_mask = numpy.zeros((maxw, n_samples)).astype('int8')
 
@@ -198,7 +199,7 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
 			break
                 continue
 
-            words_mask[c, j, idx, :] = numpy.ones((n_proj*2,))
+            words_mask[c, j, idx, :] = numpy.ones((n_proj,))
 
             y[c, idx] = l[c]
             y_mask[c, idx] = 1
