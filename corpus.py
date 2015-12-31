@@ -165,11 +165,17 @@ def process_brown():
             raise ValueError("Could not translate: " + tag)
 
     logging.info("Reading Brown corpus....")
+    tags = set([])
     for sentence in nltk.corpus.brown.tagged_sents():
         for word, tag in sentence:
-            print "%s\t%s" % (word, convert_tag(tag))
-        print ''
+            if word == "this":
+                print word, tag
+            tags.add(tag)
+            #print "%s\t%s" % (word, convert_tag(tag))
+        #print ''
 
+    print tags
+    print len(tags)
 
 def main():
     """
