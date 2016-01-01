@@ -41,21 +41,21 @@ def generate_init_params(options, params):
                               options['dim_proj_chars'])*2 - 1
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
 
-    params = param_init_lstm(options,
-                             params,
-                             prefix="lstm_chars_forwards")
-    
-    params = param_init_lstm(options,
-                             params,
-                             prefix="lstm_chars_backwards")
+    params = param_init_bidirection_lstm(options,
+                                         params,
+                                         prefix="lstm_chars_1")
 
-    params = param_init_lstm(options,
-                             params,
-                             prefix="lstm_words", mult=3)
+    params = param_init_bidirection_lstm(options,
+                                         params,
+                                         prefix="lstm_chars_2")
 
-    params = param_init_lstm(options,
-                             params,
-                             prefix="lstm_words_2", mult=3)
+    params = param_init_bidirection_lstm(options,
+                                         params,
+                                         prefix="lstm_words_1", mult=3)
+
+    params = param_init_bidirection_lstm(options,
+                                         params,
+                                         prefix="lstm_words_2", mult=3)
 
     # classifier
     params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*3,
@@ -95,5 +95,14 @@ def param_init_lstm(options, params, prefix='lstm', mult=1):
     params[_p(prefix, 'U')] = U.astype(config.floatX)
     b = numpy.zeros((4 * options['dim_proj'] * mult,))
     params[_p(prefix, 'b')] = b.astype(config.floatX)
+
+    return params
+
+def param_init_bidirection_lstm(options, params, prefix='lstm', mult=1):
+    prefix_forwards = '%s_forwards' % (prefix,)
+    prefix_backwards = '%s_backwards' % (prefix,)
+
+    params = param_init_lstm(options, params, prefix_forwards, mult)
+    params = param_init_lstm(options, params, prefix_backwards, mult)
 
     return params

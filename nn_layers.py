@@ -36,6 +36,7 @@ def per_word_averaging_layer_distrib(proj, wmask, maxw):
     """
 
     """
+    print maxw, "MAXW"
     dup = [tensor.shape_padaxis(proj, 0) for _ in range(maxw)]
     dup = tensor.concatenate(dup, 0)
     #dup = tensor.shape_padaxis(proj, 0)

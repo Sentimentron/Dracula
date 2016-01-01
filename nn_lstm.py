@@ -124,3 +124,24 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, go_backw
                                 name=_p(prefix, '_layers'),
                                 n_steps=nsteps, go_backwards=go_backwards)
     return rval[0]
+
+def bidirectional_lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, mult=1):
+
+    def _p(pp, name):
+        return '%s_%s' % (pp, name)
+
+    prefix_forwards = '%s_forwards' % (prefix,)
+    prefix_backwards = '%s_backwards' % (prefix,)
+
+    if mask is not None:
+        forwards = lstm_layer(tparams, state_below, options, prefix=prefix_forwards, mask=mask, go_backwards=False, mult=mult)
+        backwards = lstm_layer(tparams, state_below, options, prefix=prefix_backwards, mask=mask, go_backwards=True, mult=mult)
+    else:
+        forwards = lstm_unmasked_layer(tparams, state_below, options, prefix=prefix_forwards, mult=mult, go_backwards=False)
+        backwards = lstm_unmasked_layer(tparams, state_below, options, prefix=prefix_backwards, mult=mult, go_backwards=True)
+
+    #forwards = theano.printing.Print(prefix_forwards, attrs=["shape"])(forwards)
+    #backwards = theano.printing.Print(prefix_forwards, attrs=["shape"])(backwards)
+
+    return forwards + backwards
+
