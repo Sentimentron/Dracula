@@ -15,7 +15,7 @@ from util import get_minibatches_idx
 from modelio import load_pos_tagged_data, prepare_data, get_max_word_count, get_max_length
 
 from nn_layers import *
-from nn_lstm import lstm_layer, lstm_unmasked_layer
+from nn_lstm import lstm_layer, lstm_unmasked_layer, bidirectional_lstm_layer
 from nn_params import *
 from nn_optimizers import *
 from nn_support import pred_error
@@ -43,26 +43,19 @@ def build_model(tparams, options, maxw, training=True):
     n_samples = xc.shape[1]
 
     emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
-    #    emb2 = embeddings_layer(xw, tparams['Wemb'], n_timesteps, n_samples, options['dim_proj_words'])
 
-    #emb = tensor.concatenate([emb1, emb2], axis=2)
-
-    #emb = theano.printing.Print("emb", attrs=["shape"])(emb)
-
-    proj_chars_1 = lstm_layer(tparams, emb, options, "lstm_chars_forwards", mask=mask)
-    proj_chars_2 = lstm_layer(tparams, emb, options, "lstm_chars_backwards", mask=mask, go_backwards=True)
-
-    proj = proj_chars_1 + proj_chars_2
+    proj = bidirectional_lstm_layer(tparams, emb, options, "lstm_chars_1", mask=mask)
+    proj = bidirectional_lstm_layer(tparams, proj, options, "lstm_chars_2", mask=mask)
 
     avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
-    proj2 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words", mult=3)
-    proj3 = lstm_unmasked_layer(tparams, avg_per_word, options, prefix="lstm_words_2", mult=3, go_backwards=True)
+    #avg_per_word = theano.printing.Print("avg", attrs=["shape"])(avg_per_word)
 
-    proj4 = proj2 + proj3
+    proj2 = bidirectional_lstm_layer(tparams, avg_per_word, options, "lstm_words_1", mult=3)
+    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_2", mult=3)
 
-    pred = softmax_layer(proj4, tparams['U'], tparams['b'], y_mask, maxw, training)
+    pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
 
     f_pred_prob = theano.function([xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
@@ -157,7 +150,7 @@ def train_lstm(
         test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict, 16)
         test, valid = split_at(test, 0.10)
         max_word_count = max(max_word_count, get_max_word_count("Data/TweeboDaily547.conll"))
-        batch_size = 50
+        batch_size = 25
     else:
         # Pre-populate
         test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
