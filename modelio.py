@@ -14,14 +14,19 @@ from collections import defaultdict
 
 def build_character_dictionary(path, chars = {}):
     with open(path, 'r') as fin:
+        lineno = 1
         for line in fin:
             line = line.strip()
             if len(line) == 0:
                 continue
-            word, _ = line.split('\t')
-            for c in word:
-                if c not in chars:
-                    chars[c] = len(chars) + 1
+            try:
+                word, _ = line.split('\t')
+                for c in word:
+                    if c not in chars:
+                        chars[c] = len(chars) + 1
+            except ValueError as ex:
+                print ex, lineno, line
+            lineno += 1
     return chars
 
 def build_word_dictionary(path, words = {}):

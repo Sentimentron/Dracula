@@ -45,7 +45,7 @@ def build_model(tparams, options, maxw, training=True):
     emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
 
     proj = bidirectional_lstm_layer(tparams, emb, options, "lstm_chars_1", mask=mask)
-    proj = bidirectional_lstm_layer(tparams, proj, options, "lstm_chars_2", mask=mask)
+    #proj = bidirectional_lstm_layer(tparams, proj, options, "lstm_chars_2", mask=mask)
 
     avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
@@ -53,7 +53,7 @@ def build_model(tparams, options, maxw, training=True):
     #avg_per_word = theano.printing.Print("avg", attrs=["shape"])(avg_per_word)
 
     proj2 = bidirectional_lstm_layer(tparams, avg_per_word, options, "lstm_words_1", mult=3)
-    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_2", mult=3)
+    #proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_2", mult=3)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
 
@@ -88,7 +88,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -97,7 +97,7 @@ def train_lstm(
     optimizer=adadelta,  # sgd, adadelta and rmsprop available, sgd very hard to use, not recommanded (probably need momentum and decaying learning rate).
     encoder='lstm',  # TODO: can be removed must be lstm.
     saveto='lstm_model.npz',  # The best model will be saved there
-    validFreq=370,  # Compute the validation error after this number of update.
+    validFreq=450,  # Compute the validation error after this number of update.
     saveFreq=1110,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
     batch_size=100,  # The batch size during training.
@@ -135,9 +135,11 @@ def train_lstm(
     if not os.path.isfile("substitutions.pkl"):
         raise Exception("substitutions.pkl wasn't found, have you run substitution.py?")
 
-    load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
-    load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
-    load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+    #load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
+    #load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
+    #load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+
+    load_pos_tagged_data("Data/Gate.conll", char_dict, word_dict, pos_dict)
 
     with open("substitutions.pkl", "rb") as fin:
         word_dict = pickle.load(fin)
@@ -145,22 +147,19 @@ def train_lstm(
     max_word_count = 0
     if not pretrain:
         # Now load the data for real
-        train = load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict, 0)
-        max_word_count = get_max_word_count("Data/TweeboOct27.conll")
-        test = load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict, 16)
-        test, valid = split_at(test, 0.10)
-        max_word_count = max(max_word_count, get_max_word_count("Data/TweeboDaily547.conll"))
-        batch_size = 25
+        data = load_pos_tagged_data("Data/Gate.conll", char_dict, word_dict, pos_dict, 0)
+        train, eval = split_at(data, 0.30)
+        test, valid = split_at(eval, 0.50)
+        max_word_count = max(max_word_count, get_max_word_count("Data/Gate.conll"))
+        batch_size = 100
     else:
         # Pre-populate
         test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
         max_word_count = get_max_word_count("Data/Brown.conll")
         train, valid = split_at(test, 0.05)
-	max_word_count = 38	# HACK: set to the same as Twitter
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
-    ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
-
+    print "ydim =", ydim
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
@@ -274,7 +273,7 @@ def train_lstm(
                     valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
 
                     if not pretrain:
-                        train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
+                        #train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
                         test_err = pred_error(f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
                         history_errs.append([valid_err, test_err])
                     else:
@@ -287,8 +286,8 @@ def train_lstm(
                         best_p = unzip(tparams)
                         bad_counter = 0
                     if not pretrain:
-                        logging.info("Train %.4f, Valid %.4f, Test %.4f",
-                                     100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
+                        logging.info("Valid %.4f, Test %.4f",
+                                     100*(1-valid_err), 100*(1-test_err))
                     else:
                         logging.info("Valid %.4f", 100 * (1-valid_err))
 
