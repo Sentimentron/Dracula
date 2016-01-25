@@ -102,7 +102,7 @@ def hello():
 
     print chars, words
     # TODO: 32 is the n_proj
-    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 16)
+    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 32)
 
     pred = model[-3](xc, mask, wmask, y_mask)
     print pred

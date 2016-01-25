@@ -18,10 +18,11 @@ def process_cmd_line():
     """Read command line arguments"""
     p = ArgumentParser("Download and pre-process command line arguments")
     p.add_argument("--brown", action="store_true")
+    p.add_argument("--tokens", nargs="+")
 
     args = p.parse_args()
 
-    if not args.brown:
+    if not args.brown and not args.tokens:
         raise ValueError("No corpora specified (see --usage)")
 
     return args
@@ -177,6 +178,18 @@ def process_brown():
     print tags
     print len(tags)
 
+def process_token(t):
+
+    with open(t, 'r') as fin:
+        for line in fin:
+            tokens = line.split()
+            for token in tokens:
+                parts = token.split('_')
+                word = '_'.join(parts[:-1])
+                pos = parts[-1]
+                print "%s\t%s" % (word, pos)
+            print ""
+
 def main():
     """
     Main method.
@@ -187,6 +200,10 @@ def main():
 
     if args.brown:
         process_brown()
+
+    if args.tokens:
+        for t in args.tokens:
+            process_token(t)
 
 
 if __name__ == "__main__":
