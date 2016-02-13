@@ -60,7 +60,8 @@ def get_tweet_words(path):
             if len(line) == 0:
                 c += 1
                 continue
-            t[c].append(line)
+            word, pos = line.split()
+            t[c].append(word)
     return t
 
 def get_max_word_count(path):
@@ -199,10 +200,9 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
                 # This current character is a space
                 # Increase the word count and continue
                 c += 1
-		if c >= 38:
-			logging.warning("truncation")
-			break
-                continue
+                if c >= maxw:
+                    logging.warning("truncation")
+                    break
 
             words_mask[c, j, idx, :] = numpy.ones((n_proj,))
 
