@@ -12,7 +12,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from theano.tensor.shared_randomstreams import RandomStreams
 
 from util import get_minibatches_idx
-from modelio import load_pos_tagged_data, prepare_data, get_max_word_count, get_max_length
+from modelio import load_pos_tagged_data, prepare_data, get_max_word_count, get_max_length, get_max_word_length
 
 from nn_layers import *
 from nn_lstm import lstm_layer, lstm_unmasked_layer, bidirectional_lstm_layer
@@ -52,7 +52,8 @@ def build_model(tparams, options, maxw, training=True):
 
     #avg_per_word = theano.printing.Print("avg", attrs=["shape"])(avg_per_word)
 
-    proj2 = bidirectional_lstm_layer(tparams, avg_per_word, options, "lstm_words_1", mult=3)
+    proj2 = bidirectional_lstm_layer(tparams, avg_per_word, options, "lstm_words_1", mult=1)
+
     #proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_2", mult=3)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
@@ -145,17 +146,23 @@ def train_lstm(
         word_dict = pickle.load(fin)
 
     max_word_count = 0
+    max_word_length = 0
+    max_length = 0
     if not pretrain:
         # Now load the data for real
         data = load_pos_tagged_data("Data/Gate.conll", char_dict, word_dict, pos_dict, 0)
         train, eval = split_at(data, 0.30)
         test, valid = split_at(eval, 0.50)
         max_word_count = max(max_word_count, get_max_word_count("Data/Gate.conll"))
+        max_word_length = max(max_word_length, get_max_word_length("Data/Gate.conll"))
+        max_length = max(max_word_length, get_max_length("Data/Gate.conll"))
         batch_size = 100
     else:
         # Pre-populate
         test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
         max_word_count = get_max_word_count("Data/Brown.conll")
+        max_word_length = get_max_word_length("Data/Brown.conll")
+        max_length = get_max_length("Data/Brown.conll")
         train, valid = split_at(test, 0.05)
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
@@ -243,7 +250,9 @@ def train_lstm(
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
                 n_proj = dim_proj_chars# + dim_proj_words
-                xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y, 140, max_word_count, n_proj)
+                xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y,
+                                                              max_length, max_word_count,
+                                                              max_word_length, n_proj)
                 n_samples += xc.shape[1]
 
                 assert xc.shape == xw.shape
@@ -270,11 +279,11 @@ def train_lstm(
                     logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
-                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
+                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_length, max_word_count, max_word_length, n_proj)
 
                     if not pretrain:
-                        #train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, n_proj)
-                        test_err = pred_error(f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
+                        #train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, max_word_length, n_proj)
+                        test_err = pred_error(f_pred, prepare_data, test, kf_test, max_length, max_word_count, max_word_length, n_proj)
                         history_errs.append([valid_err, test_err])
                     else:
                         history_errs.append([valid_err, 0.0])
@@ -315,9 +324,9 @@ def train_lstm(
         best_p = unzip(tparams)
 
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, 140, max_word_count, n_proj)
-    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, 140, max_word_count, n_proj)
-    test_err = pred_error(f_pred, prepare_data, test, kf_test, 140, max_word_count, n_proj)
+    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, max_length, max_word_count, max_word_length, n_proj)
+    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_length, max_word_count, max_word_length, n_proj)
+    test_err = pred_error(f_pred, prepare_data, test, kf_test, max_length, max_word_count, max_word_length, n_proj)
 
     logging.info("Train %.4f, Valid %.4f, Test %.4f",
                                      100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))

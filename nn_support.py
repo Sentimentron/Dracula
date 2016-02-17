@@ -33,7 +33,7 @@ def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False, maxlen=
     return probs
 
 
-def pred_error(f_pred, prepare_data, data, iterator, maxlen, maxw, n_proj):
+def pred_error(f_pred, prepare_data, data, iterator, maxlen, maxw, max_word_length, n_proj):
     """
     Just compute the error
     f_pred: Theano fct computing the prediction
@@ -45,7 +45,7 @@ def pred_error(f_pred, prepare_data, data, iterator, maxlen, maxw, n_proj):
         xc, xw, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
                                                  [data[1][t] for t in valid_index],
                                                  numpy.array(data[2])[valid_index],
-                                                 maxlen, maxw, n_proj)
+                                                 maxlen, maxw, max_word_length, n_proj)
         preds = f_pred(xc, mask, wmask, y_mask)
         preds = preds[numpy.nonzero(y)]
         acc = numpy.equal(preds, y[numpy.nonzero(y)])
