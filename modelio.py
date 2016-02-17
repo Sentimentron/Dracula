@@ -67,7 +67,17 @@ def get_tweet_words(path):
 def get_max_word_count(path):
     t = get_tweet_words(path)
     m = max([len(t[c]) for c in t])
+    m = int(numpy.median([len(t[c]) for c in t]))
     logging.debug("get_max_word_count('%s') = %d", path, m)
+    return m
+
+def get_max_word_length(path):
+    t = get_tweet_words(path)
+    m = 0
+    for c in t:
+        for w in t[c]:
+            if len(w) >= m:
+                m = len(w)
     return m
 
 def get_max_length(path):
@@ -149,7 +159,7 @@ def string_to_unprepared_format(text, chardict, worddict):
     chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
     return [], chars, words, labels
 
-def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
+def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, maxwlen, n_proj):
     """
     Create the matrices from the datasets.
 
@@ -171,7 +181,7 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
     x_c = numpy.zeros((maxlen, n_samples)).astype('int8')
     x_w = numpy.zeros((maxlen, n_samples)).astype('int32')
     x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
-    words_mask = numpy.zeros((maxw, maxlen, n_samples, n_proj)).astype(theano.config.floatX)
+    words_mask = numpy.zeros((maxw, maxwlen, n_samples, n_proj)).astype(theano.config.floatX)
     y = numpy.zeros((maxw, n_samples)).astype('int8')
     y_mask = numpy.zeros((maxw, n_samples)).astype('int8')
 
@@ -200,8 +210,8 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, n_proj):
                 # This current character is a space
                 # Increase the word count and continue
                 c += 1
-                if c >= maxw:
-                    logging.warning("truncation")
+                if c >= maxw or c >= len(l):
+                    #logging.warning("truncation")
                     break
 
             words_mask[c, j, idx, :] = numpy.ones((n_proj,))

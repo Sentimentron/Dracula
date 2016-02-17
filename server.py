@@ -1,10 +1,11 @@
 __author__ = 'rtownsend'
 
 from lstm import build_model
-from modelio import string_to_unprepared_format, prepare_data
+from modelio import *
 from nn_params import *
 from nn_optimizers import *
 from nn_serialization import load_params
+import string
 
 from flask import Flask, request, jsonify
 app = Flask(__name__)
@@ -12,6 +13,9 @@ app = Flask(__name__)
 from collections import defaultdict, Counter
 
 model = None
+max_word_count = get_max_word_count("Data/Gate.conll")
+max_word_length = get_max_word_length("Data/Gate.conll")
+max_length = get_max_length("Data/Gate.conll")
 
 def get_lstm(
     patience=10,  # Number of epoch to wait before early stop if no progress
@@ -67,7 +71,7 @@ def get_lstm(
 
     # use_noise is for dropout
     (xc, mask, wmask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, 38, True)
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, 8, False)
 
     if decay_c > 0.:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -86,7 +90,9 @@ def get_lstm(
 
 @app.route("/api/tag", methods=["GET"])
 def hello():
-    global model
+    global model, max_word_count, max_word_length, max_length
+    
+    max_word_count = 8
 
     text = request.args.get("text", "").encode('utf8')
 
@@ -96,26 +102,34 @@ def hello():
     response["text"] = text
 
     response['prepared_text'] = text
-    errors, chars, words, labels = string_to_unprepared_format(text, model[-1]['char_dict'], model[-1]['word_dict'])
-    if len(errors) > 0:
-        response["tokenization_errors"] = errors
 
-    print chars, words
-    # TODO: 32 is the n_proj
-    xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, 140, 38, 32)
+    def find_ngrams(input_list, n):
+      return zip(*[input_list[i:] for i in range(n)])
+    
+    full_text = text.split()
+    while len(full_text) < max_word_count:
+      full_text.append("")
+    windows = []
+    for text in find_ngrams(full_text, max_word_count):
+      text = " ".join(text)
+      errors, chars, words, labels = string_to_unprepared_format(text, model[-1]['char_dict'], model[-1]['word_dict'])
+      if len(errors) > 0:
+          response["tokenization_errors"] = errors
 
-    pred = model[-3](xc, mask, wmask, y_mask)
-    print pred
+      print chars, words
+      # TODO: 32 is the n_proj
+      xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, max_length, max_word_count, max_word_length, 32)
 
-    words, windows = pred.shape
-    print windows, words
-    assert windows == 1
+      pred = model[-3](xc, mask, wmask, y_mask)
+      print pred
+      windows.append(pred)
+      
     tag_counter = defaultdict(Counter)
 
-    # Scan along each 16-word window,
+    # Scan along each n-word window,
     # build up a list of the most popular tags
-    for winidx in range(windows):
-        for idx, i in enumerate(pred[:, winidx]):
+    for winidx, pred in enumerate(windows):
+        for idx, i in enumerate(pred[:, 0]):
             wordidx = winidx + idx
             if i == 0:
                 continue
@@ -132,13 +146,18 @@ def hello():
             break
         tag, _ = tag_counter[idx].most_common()[0]
         response['tags'].append(tag)
-        response['tags_and_text'].append((tag, text[idx]))
+        response['tags_and_text'].append((tag, full_text[idx]))
 
     if False:
         for idx, i in enumerate(pred[:, 0]):
             if i == 0:
                 break
             t = model[-1]['inv_pos_dict'][i]
+            #if "NN" in t:
+            #  if text[idx][0] in string.ascii_uppercase:
+            #    t = "NNP"
+            #  elif text[idx][-1] == 's':
+            #    t = "NNS"
             response['tags'].append(t)
             response['tags_and_text'].append((t, text[idx]))
     return jsonify(**response)
@@ -146,10 +165,10 @@ def hello():
 if __name__ == "__main__":
     global model
 
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=logging.INFO)
 
     # Build the model
     model = get_lstm(reload_model="lstm_model.npz")
 
     print "Starting server..."
-    app.run(debug=True)
+    app.run(host='0.0.0.0', debug=True)

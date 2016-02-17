@@ -67,10 +67,10 @@ def per_word_averaging_layer(proj, wmask, maxw, trim=False):
 
     # tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
 
-    _max = dist.max(axis=0)
-    _min = dist.min(axis=0)
+    #_max = dist.max(axis=0)
+    #_min = dist.min(axis=0)
 
-    tmp = tensor.concatenate([tmp, _max, _min], axis=2)
+    #tmp = tensor.concatenate([tmp, _max, _min], axis=2)
     #    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
 
     if not trim:
@@ -102,9 +102,9 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
                                   )
     else:
         raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U) + b),
-                                  outputs_info=None,
-                                  sequences=[avg_per_word, tensor.arange(maxw)]
-                                  )
+				  outputs_info=None,
+				  sequences=[avg_per_word, tensor.arange(maxw)]
+				  )
 
     #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
     #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)

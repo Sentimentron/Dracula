@@ -13,6 +13,8 @@ all_tags_ref = []
 all_tags_resp = []
 wrong_dict = Counter()
 
+debug_dump = open('debug.csv', 'w')
+
 def get_from_server(words, tags):
     global tag_dict
     global inv_tag_dict
@@ -30,12 +32,17 @@ def get_from_server(words, tags):
     print response["tags"]
     assert len(response["tags"]) == len(tags)
     text = response["text"].split()
+    if tags == response["tags"]:
+       print "ALL SAME"
+    else:
+       print "DIFFER"
     for i, (r, s) in enumerate(zip(tags, response["tags"])):
         all_tags_ref.append(tag_dict[r])
         if s not in tag_dict:
             tag_dict[s] = len(tag_dict)
             inv_tag_dict[tag_dict[s]] = s
         all_tags_resp.append(tag_dict[s])
+	print >> debug_dump, ",".join([text[i], r, s])
         if r != s:
             wrong_dict.update([(r, s)])
             try:
