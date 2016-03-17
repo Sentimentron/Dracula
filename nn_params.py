@@ -31,7 +31,8 @@ def init_params(options, reloaded=False):
         return nparams
     else:
         for k in nparams:
-            nparams[k] = options[k]
+            if k in options:
+                nparams[k] = options[k]
         logging.debug("%s %s", options.keys(), nparams.keys())
         return nparams
 
@@ -53,9 +54,9 @@ def generate_init_params(options, params):
                                          params,
                                          prefix="lstm_words_1", mult=1)
 
-    #params = param_init_bidirection_lstm(options,
-    #                                     params,
-    #                                     prefix="lstm_words_2", mult=3)
+    params = param_init_bidirection_lstm(options,
+                                         params,
+                                         prefix="lstm_words_2", mult=1)
 
     # classifier
     params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
