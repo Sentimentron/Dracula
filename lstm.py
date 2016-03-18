@@ -45,7 +45,7 @@ def build_model(tparams, options, maxw, training=True):
     emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
 
     proj = bidirectional_lstm_layer(tparams, emb, options, "lstm_chars_1", mask=mask)
-    #proj = bidirectional_lstm_layer(tparams, proj, options, "lstm_chars_2", mask=mask)
+    proj = bidirectional_lstm_layer(tparams, proj, options, "lstm_chars_2", mask=mask)
 
     avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
@@ -54,6 +54,7 @@ def build_model(tparams, options, maxw, training=True):
 
     proj2 = bidirectional_lstm_layer(tparams, avg_per_word, options, "lstm_words_1", mult=1)
     proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_2", mult=1)
+    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_3", mult=1)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
 
