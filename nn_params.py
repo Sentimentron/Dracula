@@ -46,9 +46,9 @@ def generate_init_params(options, params):
                                          params,
                                          prefix="lstm_chars_1")
 
-    #params = param_init_bidirection_lstm(options,
-    #                                     params,
-    #                                     prefix="lstm_chars_2")
+    params = param_init_bidirection_lstm(options,
+                                         params,
+                                         prefix="lstm_chars_2")
 
     params = param_init_bidirection_lstm(options,
                                          params,
@@ -57,6 +57,10 @@ def generate_init_params(options, params):
     params = param_init_bidirection_lstm(options,
                                          params,
                                          prefix="lstm_words_2", mult=1)
+
+    params = param_init_bidirection_lstm(options,
+                                         params,
+                                         prefix="lstm_words_3", mult=1)
 
     # classifier
     params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
