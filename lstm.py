@@ -55,6 +55,7 @@ def build_model(tparams, options, maxw, training=True):
     proj2 = bidirectional_lstm_layer(tparams, avg_per_word, options, "lstm_words_1", mult=1)
     proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_2", mult=1)
     proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_3", mult=1)
+    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_4", mult=1)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
 
