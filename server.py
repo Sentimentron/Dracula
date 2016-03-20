@@ -71,7 +71,7 @@ def get_lstm(
 
     # use_noise is for dropout
     (xc, mask, wmask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, 8, False)
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count, False)
 
     if decay_c > 0.:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -91,8 +91,6 @@ def get_lstm(
 @app.route("/api/tag", methods=["GET"])
 def hello():
     global model, max_word_count, max_word_length, max_length
-    
-    max_word_count = 8
 
     text = request.args.get("text", "").encode('utf8')
 
