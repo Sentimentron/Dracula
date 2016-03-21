@@ -13,7 +13,7 @@ app = Flask(__name__)
 from collections import defaultdict, Counter
 
 model = None
-max_word_count = get_max_word_count("Data/Gate.conll")
+max_word_count = 4 #get_max_word_count("Data/Gate.conll") + 12
 max_word_length = get_max_word_length("Data/Gate.conll")
 max_length = get_max_length("Data/Gate.conll")
 
@@ -44,6 +44,7 @@ def get_lstm(
     # Model options
     model_options = locals().copy()
     print "model options", model_options
+    print "max length", max_length
 
     load_params(model_path, model_options)
     char_dict = model_options['char_dict']
