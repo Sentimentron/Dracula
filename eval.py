@@ -80,7 +80,7 @@ with open(sys.argv[1]) as fin:
                 tag_dict[tag] = len(tag_dict)
                 inv_tag_dict[tag_dict[tag]] = tag
 
-            if len(word) + sum(lengths) < 140:
+            if len(word) + sum(lengths) <= 560:
                 words.append(word)
                 tags.append(tag)
                 lengths.append(len(words))
