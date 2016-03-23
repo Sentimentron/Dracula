@@ -67,7 +67,7 @@ def get_tweet_words(path):
 def get_max_word_count(path):
     t = get_tweet_words(path)
     m = [len(t[c]) for c in t]
-    m = int(numpy.percentile(m, 50))
+    m = int(numpy.percentile(m, 75))
     #m = int(numpy.median([len(t[c]) for c in t]))
     logging.debug("get_max_word_count('%s') = %d", path, m)
     return m

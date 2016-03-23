@@ -13,7 +13,7 @@ app = Flask(__name__)
 from collections import defaultdict, Counter
 
 model = None
-max_word_count = 8 #get_max_word_count("Data/Gate.conll") + 12
+max_word_count = 13 #get_max_word_count("Data/Gate.conll") + 12
 max_word_length = get_max_word_length("Data/Gate.conll")
 max_length = get_max_length("Data/Gate.conll")
 
