@@ -44,21 +44,18 @@ def build_model(tparams, options, maxw, training=True):
 
     emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
 
-    proj = bidirectional_lstm_layer(tparams, emb, options, "lstm_chars_1", mask=mask)
-    proj = bidirectional_lstm_layer(tparams, proj, options, "lstm_chars_2", mask=mask)
-    proj = bidirectional_lstm_layer(tparams, proj, options, "lstm_chars_3", mask=mask)
+    proj = emb
+    for i in range(options['letter_layers']):
+        name = 'lstm_chars_%d' % (i + 1,)
+        proj = bidirectional_lstm_layer(tparams, proj, options, name, mask=mask)
 
     avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
     avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
 
-    #avg_per_word = theano.printing.Print("avg", attrs=["shape"])(avg_per_word)
-
-    proj2 = bidirectional_lstm_layer(tparams, avg_per_word, options, "lstm_words_1", mult=1)
-    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_2", mult=1)
-    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_3", mult=1)
-    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_4", mult=1)
-    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_5", mult=1)
-    proj2 = bidirectional_lstm_layer(tparams, proj2, options, "lstm_words_6", mult=1)
+    proj2 = avg_per_word
+    for i in range(options['word_layers']):
+        name = 'lstm_words_%d' % (i + 1,)
+        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
 
@@ -67,8 +64,6 @@ def build_model(tparams, options, maxw, training=True):
 
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
-
-    #y = theano.printing.Print("y")(y)
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
 
@@ -93,8 +88,8 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
-    patience=10,  # Number of epoch to wait before early stop if no progress
+    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
+    patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
     decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
@@ -120,6 +115,8 @@ def train_lstm(
     char_dict = {},
     word_dict = {},
     pos_dict = {},
+    word_layers=0,
+    letter_layers=0
 ):
 
     # Model options
@@ -356,6 +353,8 @@ if __name__ == '__main__':
     a.add_argument("--model", help="Load an existing model")
     a.add_argument("--max-epochs", type=int, default=1000)
     a.add_argument("--pretrain", help="Divide a 90-10 training/eval thing", action="store_true")
+    a.add_argument("--words", help="Number of recurrent layers (word level)", type=int, default=0)
+    a.add_argument("--letters", help="Number of recurrent layers (letter level)", type=int, default=0)
 
     p = a.parse_args()
 
@@ -363,5 +362,7 @@ if __name__ == '__main__':
     train_lstm(
         max_epochs=p.max_epochs,
         reload_model=p.model,
-        pretrain=p.pretrain
+        pretrain=p.pretrain,
+        word_layers=p.words,
+        letter_layers=p.letters
     )
