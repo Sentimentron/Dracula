@@ -42,41 +42,13 @@ def generate_init_params(options, params):
                               options['dim_proj_chars'])*2 - 1
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
 
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_chars_1")
+    for i in range(options['letter_layers']):
+        name = 'lstm_chars_%d' % (i + 1,)
+        params = param_init_bidirection_lstm(options, params, prefix=name)
 
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_chars_2")
-
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_chars_3")
-
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_words_1", mult=1)
-
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_words_2", mult=1)
-
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_words_3", mult=1)
-
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_words_4", mult=1)
-
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_words_5", mult=1)
-
-    params = param_init_bidirection_lstm(options,
-                                         params,
-                                         prefix="lstm_words_6", mult=1)
+    for i in range(options['word_layers']):
+        name = 'lstm_words_%d' % (i + 1,)
+        params = param_init_bidirection_lstm(options, params, prefix=name)
 
     # classifier
     params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
