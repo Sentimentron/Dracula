@@ -13,7 +13,7 @@ app = Flask(__name__)
 from collections import defaultdict, Counter
 
 model = None
-max_word_count = 13 #get_max_word_count("Data/Gate.conll") + 12
+max_word_count = 22#13 #get_max_word_count("Data/Gate.conll") + 12
 max_word_length = get_max_word_length("Data/Gate.conll")
 max_length = get_max_length("Data/Gate.conll")
 
@@ -106,7 +106,7 @@ def hello():
 
     def find_ngrams(input_list, n):
       return zip(*[input_list[i:] for i in range(n)])
-    
+
     full_text = text.split()
     while len(full_text) < max_word_count:
       full_text.append("")
@@ -124,7 +124,7 @@ def hello():
       pred = model[-3](xc, mask, wmask, y_mask)
       print pred
       windows.append(pred)
-      
+
     tag_counter = defaultdict(Counter)
 
     # Scan along each n-word window,
