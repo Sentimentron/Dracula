@@ -61,13 +61,14 @@ def get_tweet_words(path):
                 c += 1
                 continue
             word, pos = line.split()
+            word = word.decode('utf8')
             t[c].append(word)
     return t
 
 def get_max_word_count(path):
     t = get_tweet_words(path)
     m = [len(t[c]) for c in t]
-    m = int(numpy.percentile(m, 95))
+    m = int(numpy.percentile(m, 50))
     #m = int(numpy.median([len(t[c]) for c in t]))
     logging.debug("get_max_word_count('%s') = %d", path, m)
     return m
@@ -79,12 +80,16 @@ def get_max_word_length(path):
         for w in t[c]:
             if len(w) >= m:
                 m = len(w)
+                logging.debug('length: %s, %d', w, m)
+    logging.debug("get_max_word_length('%s') = %d", path, m)
     return m
 
 def get_max_length(path):
     t = get_tweet_words(path)
-    t = {c: " ".join(t[c]) for c in t}
-    return max([len(t[c]) for c in t])
+    t = {c: u"".join(t[c]) for c in t}
+    m = max([len(t[c]) for c in t])
+    logging.debug('get_max_length(%s) = %d', path, m)
+    return m
 
 def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, overlap=15, allow_append=True):
 

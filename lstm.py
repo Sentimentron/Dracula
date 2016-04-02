@@ -44,15 +44,40 @@ def build_model(tparams, options, maxw, training=True):
 
     emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
 
-    proj = emb
+    dist = per_word_averaging_layer_distrib(emb, wmask, maxw)
+    dist = dist.dimshuffle(1, 2, 0, 3)
+    #dist = theano.printing.Print("dist", attrs=["shape"])(dist)
+#    dist_mask = tensor.neq(dist, numpy_floatX(0.0))
+
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)
-        proj = bidirectional_lstm_layer(tparams, proj, options, name, mask=mask)
+#        def _step(x_, o_):
+#            o_ = bidirectional_lstm_layer(tparams, x_, options, name)
+#            return o_
+#        dist = theano.scan(_step,
+#                            sequences=[dist],
+#                            outputs_info=[tensor.zeros_like(dist)])
+        for j in range(8):
+            tmp = bidirectional_lstm_layer(tparams, dist[:, :, j, :], options, name)
+            #tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
+            dist = tensor.set_subtensor(dist[:, :, j, :], tmp)
 
-    avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
-    avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
+    divider = tensor.cast(tensor.neq(dist, numpy_floatX(0.0)).sum(axis=0), theano.config.floatX)
+    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
 
-    proj2 = avg_per_word
+    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
+    tmp /= divider
+    proj2 = tmp.dimshuffle(1, 0, 2)
+    #proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
+
+#    for i in range(options['letter_layers']):
+#        name = 'lstm_chars_%d' % (i + 1,)
+#        proj = bidirectional_lstm_layer(tparams, proj, options, name, mask=mask)
+
+#    avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
+#    avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
+
+#    proj2 = avg_per_word
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
@@ -88,7 +113,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
     patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
