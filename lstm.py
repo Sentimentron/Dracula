@@ -29,72 +29,55 @@ SEED = 123
 numpy.random.seed(SEED)
 
 def build_model(tparams, options, maxw, training=True):
-    xc = tensor.matrix('xc', dtype='int8')
-
-    xc.tag.test_value=numpy.asarray([[5, 5, 1], [5, 5, 1], [5, 5, 1]])
-    mask = tensor.matrix('mask', dtype=config.floatX)
-    mask.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
-    wmask = tensor.ftensor4('wmask')
+    xc = tensor.tensor3('xc', dtype='int8')
+    mask = tensor.tensor3('mask', dtype=config.floatX)
     y = tensor.matrix('y', dtype='int8')
-    y.tag.test_value=numpy.asarray([[1, 1, 1], [1, 1, 1], [1, 1, 1]])
     y_mask = tensor.matrix('y_mask', dtype='int8')
 
-    n_timesteps = xc.shape[0]
-    n_samples = xc.shape[1]
+    n_batch = xc.shape[2]
 
-    emb = embeddings_layer(xc, tparams['Cemb'], n_timesteps, n_samples, options['dim_proj'])
+    emb = embeddings_layer(xc, tparams['Cemb'], options['dim_proj'])
 
-    dist = per_word_averaging_layer_distrib(emb, wmask, maxw)
-    dist = dist.dimshuffle(1, 2, 0, 3)
-    #dist = theano.printing.Print("dist", attrs=["shape"])(dist)
-#    dist_mask = tensor.neq(dist, numpy_floatX(0.0))
+    dist = emb
+    dist_mask = tensor.neq(dist, numpy_floatX(0.0))
 
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)
-#        def _step(x_, o_):
-#            o_ = bidirectional_lstm_layer(tparams, x_, options, name)
-#            return o_
-#        dist = theano.scan(_step,
-#                            sequences=[dist],
-#                            outputs_info=[tensor.zeros_like(dist)])
-        for j in range(8):
-            tmp = bidirectional_lstm_layer(tparams, dist[:, :, j, :], options, name)
-            #tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
-            dist = tensor.set_subtensor(dist[:, :, j, :], tmp)
 
-    divider = tensor.cast(tensor.neq(dist, numpy_floatX(0.0)).sum(axis=0), theano.config.floatX)
+        def _step(x_):
+            t = bidirectional_lstm_layer(tparams, x_, options, name)
+            return t
+
+        dist, updates = theano.scan(_step, sequences=[dist], n_steps=8)
+
+    dist = dist.dimshuffle(1, 2, 0, 3)
+    dist_mask = tensor.cast(dist_mask, theano.config.floatX)
+    dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
+    divider = dist_mask.sum(axis=0)
     divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
 
+    dist = dist * dist_mask
     tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
     tmp /= divider
     proj2 = tmp.dimshuffle(1, 0, 2)
-    #proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
 
-#    for i in range(options['letter_layers']):
-#        name = 'lstm_chars_%d' % (i + 1,)
-#        proj = bidirectional_lstm_layer(tparams, proj, options, name, mask=mask)
-
-#    avg_per_word = per_word_averaging_layer(proj, wmask, maxw)
-#    avg_per_word = avg_per_word.dimshuffle(1, 0, 2)
-
-#    proj2 = avg_per_word
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
 
-    f_pred_prob = theano.function([xc, mask, wmask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([xc, mask, wmask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     def cost_scan_i(i, j, free_var):
-        return -tensor.log(i[tensor.arange(n_samples), j] + 1e-8)
+        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
 
-    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_samples)])
+    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
 
     cost = cost.mean()
 
-    return xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost
+    return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
     src_chars, src_words, src_labels = [], [], []
@@ -156,17 +139,10 @@ def train_lstm(
 
     # Load the training data
     print 'Loading data'
-    #
-    # Pre-populate the dictionaries
-    #
-    if not os.path.isfile("substitutions.pkl"):
-        raise Exception("substitutions.pkl wasn't found, have you run substitution.py?")
 
-    #load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
-    #load_pos_tagged_data("Data/TweeboOct27.conll", char_dict, word_dict, pos_dict)
-    #load_pos_tagged_data("Data/TweeboDaily547.conll", char_dict, word_dict, pos_dict)
+    input_path = "Data/Gate-Train.conll"
 
-    load_pos_tagged_data("Data/Gate.conll", char_dict, word_dict, pos_dict)
+    load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict)
 
     with open("substitutions.pkl", "rb") as fin:
         word_dict = pickle.load(fin)
@@ -174,24 +150,15 @@ def train_lstm(
     max_word_count = 0
     max_word_length = 0
     max_length = 0
-    if not pretrain:
-        # Now load the data for real
-        data = load_pos_tagged_data("Data/Gate-Train.conll", char_dict, word_dict, pos_dict, 0)
-        train, eval = split_at(data, 0.30)
-        test, valid = split_at(eval, 0.50)
-        max_word_count = max(max_word_count, \
-        get_max_word_count("Data/Gate-Train.conll"))
-        max_word_length = max(max_word_length, \
-        get_max_word_length("Data/Gate-Train.conll"))
-        max_length = max(max_word_length, get_max_length("Data/Gate-Train.conll"))
-        batch_size = 100
-    else:
-        # Pre-populate
-        test = load_pos_tagged_data("Data/Brown.conll", char_dict, word_dict, pos_dict)
-        max_word_count = get_max_word_count("Data/Brown.conll")
-        max_word_length = get_max_word_length("Data/Brown.conll")
-        max_length = get_max_length("Data/Brown.conll")
-        train, valid = split_at(test, 0.05)
+    # Now load the data for real
+    data = load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict, 0)
+    train, eval = split_at(data, 0.30)
+    test, valid = split_at(eval, 0.50)
+    max_word_count = max(max_word_count, \
+    get_max_word_count(input_path))
+    max_word_length = max(max_word_length, \
+    get_max_word_length(input_path))
+    max_length = max(max_word_length, get_max_length(input_path))
 
     ydim = numpy.max(numpy.amax(train[2])) + 1
     print "ydim =", ydim
@@ -216,7 +183,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (xc, mask, wmask,
+    (xc, mask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
 
     if decay_c > 0.:
@@ -226,14 +193,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([xc, mask, wmask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([xc, mask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([xc, mask, wmask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([xc, mask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        xc, mask, wmask, y, y_mask, cost)
+                                        xc, mask, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -278,14 +245,14 @@ def train_lstm(
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
                 n_proj = dim_proj_chars# + dim_proj_words
-                xc, xw, mask, wmask, y, y_mask = prepare_data(x_c, x_w, y,
-                                                              max_length, max_word_count,
-                                                              max_word_length, n_proj)
+                #def prepare_data(char_seqs, labels, maxw, maxwlen):
+                xc, mask, y, y_mask = prepare_data(x_c, y,
+                                                  max_word_count,
+                                                  max_word_length)
                 n_samples += xc.shape[1]
+                assert xc.shape == mask.shape
 
-                assert xc.shape == xw.shape
-
-                cost = f_grad_shared(xc, mask, wmask, y, y_mask)
+                cost = f_grad_shared(xc, mask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
@@ -307,11 +274,11 @@ def train_lstm(
                     logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
-                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_length, max_word_count, max_word_length, n_proj)
+                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length)
 
                     if not pretrain:
                         #train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, max_word_length, n_proj)
-                        test_err = pred_error(f_pred, prepare_data, test, kf_test, max_length, max_word_count, max_word_length, n_proj)
+                        test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length)
                         history_errs.append([valid_err, test_err])
                     else:
                         history_errs.append([valid_err, 0.0])
@@ -352,9 +319,9 @@ def train_lstm(
         best_p = unzip(tparams)
 
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, max_length, max_word_count, max_word_length, n_proj)
-    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_length, max_word_count, max_word_length, n_proj)
-    test_err = pred_error(f_pred, prepare_data, test, kf_test, max_length, max_word_count, max_word_length, n_proj)
+    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, max_word_count, max_word_length)
+    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length)
+    test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length)
 
     logging.info("Train %.4f, Valid %.4f, Test %.4f",
                                      100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))

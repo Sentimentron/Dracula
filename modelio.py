@@ -76,11 +76,14 @@ def get_max_word_count(path):
 def get_max_word_length(path):
     t = get_tweet_words(path)
     m = 0
+    d = []
     for c in t:
         for w in t[c]:
+            d.append(len(w))
             if len(w) >= m:
                 m = len(w)
                 logging.debug('length: %s, %d', w, m)
+    m = numpy.percentile(d, 95)
     logging.debug("get_max_word_length('%s') = %d", path, m)
     return m
 
@@ -165,7 +168,7 @@ def string_to_unprepared_format(text, chardict, worddict):
     chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
     return [], chars, words, labels
 
-def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, maxwlen, n_proj):
+def prepare_data(char_seqs, labels, maxw, maxwlen):
     """
     Create the matrices from the datasets.
 
@@ -178,34 +181,20 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, maxwlen, n_proj):
     This swap the axis!
     """
 
-    import pprint
-
     # x: a list of sentences
-    lengths = [min(len(s_c), maxlen) for s_c in char_seqs]
     n_samples = len(char_seqs)
 
-    x_c = numpy.zeros((maxlen, n_samples)).astype('int8')
-    x_w = numpy.zeros((maxlen, n_samples)).astype('int32')
-    x_mask = numpy.zeros((maxlen, n_samples)).astype(theano.config.floatX)
-    words_mask = numpy.zeros((maxw, maxwlen, n_samples, n_proj)).astype(theano.config.floatX)
+    x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
+    x_mask = numpy.zeros((maxw, maxwlen, n_samples)).astype(theano.config.floatX)
     y = numpy.zeros((maxw, n_samples)).astype('int8')
     y_mask = numpy.zeros((maxw, n_samples)).astype('int8')
 
-
-    for idx, (s_c, s_w, l) in enumerate(zip(char_seqs, word_seqs, labels)):
+    for idx, (s_c, l) in enumerate(zip(char_seqs, labels)):
         # idx is the current position in the mini-batch
         # s_c is a list of characters
         # s_w is a list of words
         # l is a list of labels
-        s_c = s_c[:lengths[idx]]
-        s_w = s_w[:lengths[idx]]
-        l = l[:lengths[idx]]
-        x_c[:lengths[idx], idx] = s_c
-        x_w[:lengths[idx], idx] = s_w
-        x_mask[:lengths[idx], idx] = 1.
-
         c = 0
-        i = 0
         warning = None
         for j, a in enumerate(s_c):
             # j is the current character in this tweet
@@ -216,16 +205,25 @@ def prepare_data(char_seqs, word_seqs, labels, maxlen, maxw, maxwlen, n_proj):
                 # This current character is a space
                 # Increase the word count and continue
                 c += 1
-                if c >= maxw or c >= len(l):
-                    #logging.warning("truncation")
+                if c >= maxw:
+                    if j != len(s_c):
+                        warning = "truncation: too many words in this tweet! {}-{}".format(j, len(s_c))
+                    break
+                if c >= len(l):
+                    if j != len(s_c):
+                        warning = "truncation: too many words for these labels"
                     break
 
-            words_mask[c, j, idx, :] = numpy.ones((n_proj,))
+            if j >= x_c.shape[1]:
+                #warning = "truncation: too many characters for this maxwlen"
+                break
 
+            x_c[c, j, idx] = a
+            x_mask[c, j, idx] = 1
             y[c, idx] = l[c]
             y_mask[c, idx] = 1
 
         if warning is not None:
             logging.warning("%s", warning)
 
-    return x_c, x_w, x_mask, words_mask, y, y_mask
+    return x_c, x_mask, y, y_mask
