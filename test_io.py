@@ -6,7 +6,7 @@
 
 import unittest
 from modelio import load_pos_tagged_data, prepare_data
-
+import logging
 
 class TestIOMethods(unittest.TestCase):
 
@@ -93,22 +93,26 @@ class TestIOMethods(unittest.TestCase):
 
     def test_prepare_data(self):
         chars, words, labels = load_pos_tagged_data("Data/test_read_2.conll")
-        xc, xw, x_mask, words_mask, y, y_mask = prepare_data(chars, words, labels, 15, 2, 4)
+        xc, x_mask, y, y_mask = prepare_data(chars, labels, 2, 15)
 
         print chars
 
         # 15 is the maximum length of any word
-        self.assertEquals(xc.shape, (15, 10))
-        self.assertEquals(xw.shape, (15, 10)) # 15 is also the maximum number of words in a tweet
-        self.assertEquals(x_mask.shape, (15, 10))
-        self.assertEquals(words_mask.shape, (2, 10, 15, 4))
-        self.assertEquals(y.shape, (16, 10))
+        self.assertEquals(xc.shape, (2, 15, 10))
+        self.assertEquals(x_mask.shape, (2, 15, 10))
+        self.assertEquals(y.shape, (2, 10))
 
-        self.assertEquals(list(xc[:, 0]), [1, 2, 3, 4, 5, 6, 7, 0, 0, 0, 0, 0, 0, 0, 0])
-        self.assertEquals(list(xw[:, 0]), [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
-        self.assertEquals(list(x_mask[:, 0]), [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
-        self.assertEquals(list(y[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
-        self.assertEquals(list(y_mask[:, 0]), [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0])
+        xc7 = list(xc[0, :7, 0])
+        logging.debug(xc7)
+        self.assertEquals(xc7, [1, 2, 3, 4, 5, 6, 7])
 
-        # words mask: must be tested via the word_averaging_layer op
+        xm7 = list(x_mask[0, :7, 0])
+        logging.debug(xm7)
+        self.assertEquals(xm7, [1, 1, 1, 1, 1, 1, 1])
 
+       # self.assertEquals(list(xc[:, 0]), [1, 2, 3, 4, 5, 6, 7], [0, 0, 0, 0, 0, 0, 0, 0])
+        #self.assertEquals(list(x_mask[:, 0]), [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
+        self.assertEquals(list(y[0:2, 0]), [1, 0])
+        self.assertEquals(list(y_mask[0:2, 0]), [1, 0])
+
+        # words mask: must be tested via the word_averaging_layer

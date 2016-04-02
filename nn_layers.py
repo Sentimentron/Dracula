@@ -7,18 +7,19 @@ from theano import tensor
 from util import numpy_floatX
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-def embeddings_layer(x, Wemb, n_timesteps, n_samples, dim_proj):
+def embeddings_layer(x, Wemb, dim_proj):
     """
     Returns the one-hot vector x after encoding in the Wemb embedding space.
     :param x: One-hot index vector (25, 23...)
     :param Wemb: Word embeddings
-    :param n_timesteps: Maximum number of timesteps
-    :param n_samples: Maximum number of samples
-    :param dim_proj: Size of the word embeddings space
     :return:
     """
 
-    return Wemb[x.flatten()].reshape([n_timesteps, n_samples, dim_proj])
+    n_words = x.shape[0]
+    n_max_letters_in_word = x.shape[1]
+    n_batch = x.shape[2]
+
+    return Wemb[x.flatten()].reshape([n_words, n_max_letters_in_word, n_batch, dim_proj])
 
 
 def lstm_mask_layer(proj, mask):
@@ -42,7 +43,13 @@ def per_word_averaging_layer_distrib(proj, wmask, maxw):
     #dup = tensor.shape_padaxis(proj, 0)
 
     mul = tensor.mul(wmask, dup)
-
+    mul = theano.printing.Print("mul", attrs=["shape"])(mul)
+#    mul = mul[mul.nonzero()]
+#    mul = mul[mul != 0]
+    compare = tensor.eq(mul, numpy_floatX(0.))
+    mul = mul[(1-compare).nonzero()[0]]
+    mul = theano.printing.Print("mul", attrs=["shape"])(mul)
+#    mul = theano.printing.Print("mul")(mul)
     return mul
 
 def per_word_averaging_layer(proj, wmask, maxw, trim=False):
