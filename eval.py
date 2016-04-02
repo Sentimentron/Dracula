@@ -3,6 +3,7 @@
 # Seperate evaluation script
 
 import sys
+import csv
 import requests
 from sklearn.metrics import classification_report, accuracy_score, confusion_matrix
 from collections import Counter
@@ -18,7 +19,9 @@ documents_all_correct = 0
 
 debug_dump = open('debug.csv', 'w')
 
-def get_from_server(words, tags):
+def get_from_server(words, tags, debugf):
+    if len(words) > 22:
+        return
     global tag_dict
     global inv_tag_dict
     global all_tags_ref
@@ -50,7 +53,8 @@ def get_from_server(words, tags):
             tag_dict[s] = len(tag_dict)
             inv_tag_dict[tag_dict[s]] = s
         all_tags_resp.append(tag_dict[s])
-	print >> debug_dump, ",".join([text[i], r, s])
+        print >> debug_dump, ",".join([text[i], r, s])
+        debugf.writerow([text[i], r, s])
         if r != s:
             wrong_dict.update([(r, s)])
             try:
@@ -64,30 +68,34 @@ def get_from_server(words, tags):
 
 
 with open(sys.argv[1]) as fin:
-    # Read the file in CONLL format
-    words, lengths, tags = [], [], []
-    for line in fin:
-        line = line.decode('utf8').strip()
-        if len(line) == 0:
-            # Update the results with what comes back
-            get_from_server(words, tags)
-            words, tags = [], []
-            lengths = []
-            continue
-        try:
-            word, tag = line.split()
-            if tag not in tag_dict:
-                tag_dict[tag] = len(tag_dict)
-                inv_tag_dict[tag_dict[tag]] = tag
-
-            if len(word) + sum(lengths) <= 560:
-                words.append(word)
-                tags.append(tag)
-                lengths.append(len(words))
-        except ValueError:
+    with open("debug_dump.csv", "wb") as csvfile:
+        # Read the file in CONLL format
+        debugwriter = csv.writer(csvfile, delimiter=',',
+                                 quotechar='"', quoting=csv.QUOTE_MINIMAL)
+        debugwriter.writerow(["word","reference","tagged_as"])
+        words, lengths, tags = [], [], []
+        for line in fin:
+            line = line.decode('utf8').strip()
+            if len(line) == 0:
+                # Update the results with what comes back
+                get_from_server(words, tags, debugwriter)
+                words, tags = [], []
+                lengths = []
                 continue
+            try:
+                word, tag = line.split()
+                if tag not in tag_dict:
+                    tag_dict[tag] = len(tag_dict)
+                    inv_tag_dict[tag_dict[tag]] = tag
 
-    assert len(words) == 0
+                if len(word) + sum(lengths) <= 560:
+                    words.append(word)
+                    tags.append(tag)
+                    lengths.append(len(words))
+            except ValueError:
+                    continue
+
+        assert len(words) == 0
 
 names = [inv_tag_dict[k] for k in sorted(inv_tag_dict)]
 print ",".join(names)
