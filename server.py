@@ -117,37 +117,50 @@ def hello():
       if len(errors) > 0:
           response["tokenization_errors"] = errors
 
-      print chars, words
       # TODO: 32 is the n_proj
       xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, max_length, max_word_count, max_word_length, 48)
 
       pred = model[-3](xc, mask, wmask, y_mask)
-      print pred
-      windows.append(pred)
+      probs = model[-4](xc, mask, wmask, y_mask)
+      windows.append((pred, probs))
 
-    tag_counter = defaultdict(Counter)
+    tag_counter = defaultdict(lambda : defaultdict(float))
 
     # Scan along each n-word window,
     # build up a list of the most popular tags
-    for winidx, pred in enumerate(windows):
+    for winidx, (pred, probs) in enumerate(windows):
         for idx, i in enumerate(pred[:, 0]):
             wordidx = winidx + idx
             if i == 0:
                 continue
-            t = model[-1]['inv_pos_dict'][i]
-            tag_counter[wordidx].update([t])
+#            t = model[-1]['inv_pos_dict'][i]
+            print probs.shape
+            print pred.shape
+            for j, p in enumerate(probs[idx, 0, :]):
+                tag_counter[wordidx][j] += p
+#            tag_counter[wordidx].update([t])
 
     # Set up the response
     response['tags'] = []
-    response['tags_and_text'] = []
+    response['full_info'] = []
 
     text = text.split(' ')
     for idx in sorted(tag_counter):
         if len(tag_counter[idx]) == 0:
             break
-        tag, _ = tag_counter[idx].most_common()[0]
+        print tag_counter[idx]
+        max_tag = 0
+        max_prob = 0
+        for t in tag_counter[idx]:
+            p = tag_counter[idx][t]
+            if p > max_prob:
+                max_prob = p
+                max_tag = t
+        if max_tag == 0:
+            break
+        tag = model[-1]['inv_pos_dict'][max_tag]
         response['tags'].append(tag)
-        response['tags_and_text'].append((tag, full_text[idx]))
+        response['full_info'].append((tag, max_prob, full_text[idx]))
 
     if False:
         for idx, i in enumerate(pred[:, 0]):

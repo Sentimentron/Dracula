@@ -151,12 +151,14 @@ def train_lstm(
     max_length = 0
     if not pretrain:
         # Now load the data for real
-        data = load_pos_tagged_data("Data/Gate.conll", char_dict, word_dict, pos_dict, 0)
+        data = load_pos_tagged_data("Data/Gate-Train.conll", char_dict, word_dict, pos_dict, 0)
         train, eval = split_at(data, 0.30)
         test, valid = split_at(eval, 0.50)
-        max_word_count = max(max_word_count, get_max_word_count("Data/Gate.conll"))
-        max_word_length = max(max_word_length, get_max_word_length("Data/Gate.conll"))
-        max_length = max(max_word_length, get_max_length("Data/Gate.conll"))
+        max_word_count = max(max_word_count, \
+        get_max_word_count("Data/Gate-Train.conll"))
+        max_word_length = max(max_word_length, \
+        get_max_word_length("Data/Gate-Train.conll"))
+        max_length = max(max_word_length, get_max_length("Data/Gate-Train.conll"))
         batch_size = 100
     else:
         # Pre-populate
