@@ -5,6 +5,8 @@ Build a tweet sentiment analyzer
 from argparse import ArgumentParser
 import logging
 
+import itertools
+
 import cPickle as pkl
 import time
 
@@ -48,7 +50,7 @@ def build_model(tparams, options, maxw, training=True):
             t = bidirectional_lstm_layer(tparams, x_, options, name)
             return t
 
-        dist, updates = theano.scan(_step, sequences=[dist], n_steps=8)
+        dist, updates = theano.scan(_step, sequences=[dist], n_steps=dist.shape[0])
 
     dist = dist.dimshuffle(1, 2, 0, 3)
     dist_mask = tensor.cast(dist_mask, theano.config.floatX)
@@ -66,6 +68,7 @@ def build_model(tparams, options, maxw, training=True):
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
+    #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
     f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
@@ -96,7 +99,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
     patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -108,7 +111,7 @@ def train_lstm(
     validFreq=450,  # Compute the validation error after this number of update.
     saveFreq=1110,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=100,  # The batch size during training.
+    batch_size=50,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 
@@ -160,7 +163,9 @@ def train_lstm(
     get_max_word_length(input_path))
     max_length = max(max_word_length, get_max_length(input_path))
 
-    ydim = numpy.max(numpy.amax(train[2])) + 1
+    #ydim = numpy.max(numpy.max(train[2])) + 1
+    #print numpy.max(train[2])
+    ydim = max(itertools.chain.from_iterable(train[2])) + 1
     print "ydim =", ydim
 
     model_options['ydim'] = ydim

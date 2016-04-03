@@ -73,7 +73,7 @@ def get_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (xc, mask, wmask,
+    (xc, mask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count, False)
 
     if decay_c > 0.:
@@ -89,7 +89,7 @@ def get_lstm(
 
     model_options['inv_pos_dict'] = inv_tag_dict
 
-    return xc, mask, wmask, y, y_mask, f_pred_prob, f_pred, cost, model_options
+    return xc, mask, y, y_mask, f_pred_prob, f_pred, cost, model_options
 
 @app.route("/api/tag", methods=["GET"])
 def hello():
@@ -113,15 +113,17 @@ def hello():
     windows = []
     for text in find_ngrams(full_text, max_word_count):
       text = " ".join(text)
+      #print text
       errors, chars, words, labels = string_to_unprepared_format(text, model[-1]['char_dict'], model[-1]['word_dict'])
       if len(errors) > 0:
           response["tokenization_errors"] = errors
 
       # TODO: 32 is the n_proj
-      xc, xw, mask, wmask, y, y_mask = prepare_data(chars, words, labels, max_length, max_word_count, max_word_length, 48)
+      xc, mask, y, y_mask = prepare_data(chars, labels, max_word_count, max_word_length)
 
-      pred = model[-3](xc, mask, wmask, y_mask)
-      probs = model[-4](xc, mask, wmask, y_mask)
+      pred = model[-3](xc, mask, y_mask)
+      probs = model[-4](xc, mask, y_mask)
+      #print pred, xc
       windows.append((pred, probs))
 
     tag_counter = defaultdict(lambda : defaultdict(float))
@@ -133,12 +135,8 @@ def hello():
             wordidx = winidx + idx
             if i == 0:
                 continue
-#            t = model[-1]['inv_pos_dict'][i]
-            print probs.shape
-            print pred.shape
             for j, p in enumerate(probs[idx, 0, :]):
                 tag_counter[wordidx][j] += p
-#            tag_counter[wordidx].update([t])
 
     # Set up the response
     response['tags'] = []
@@ -148,32 +146,20 @@ def hello():
     for idx in sorted(tag_counter):
         if len(tag_counter[idx]) == 0:
             break
-        print tag_counter[idx]
         max_tag = 0
         max_prob = 0
         for t in tag_counter[idx]:
             p = tag_counter[idx][t]
+            if t != 0:
+                if full_text[idx] == "sunday":
+                    print model[-1]['inv_pos_dict'][t], p, full_text[idx]
             if p > max_prob:
                 max_prob = p
                 max_tag = t
-        if max_tag == 0:
-            break
         tag = model[-1]['inv_pos_dict'][max_tag]
         response['tags'].append(tag)
         response['full_info'].append((tag, max_prob, full_text[idx]))
 
-    if False:
-        for idx, i in enumerate(pred[:, 0]):
-            if i == 0:
-                break
-            t = model[-1]['inv_pos_dict'][i]
-            #if "NN" in t:
-            #  if text[idx][0] in string.ascii_uppercase:
-            #    t = "NNP"
-            #  elif text[idx][-1] == 's':
-            #    t = "NNS"
-            response['tags'].append(t)
-            response['tags_and_text'].append((t, text[idx]))
     return jsonify(**response)
 
 if __name__ == "__main__":
