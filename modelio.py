@@ -83,7 +83,7 @@ def get_max_word_length(path):
             if len(w) >= m:
                 m = len(w)
                 logging.debug('length: %s, %d', w, m)
-    m = numpy.percentile(d, 95)
+    m = numpy.percentile(d, 98)
     logging.debug("get_max_word_length('%s') = %d", path, m)
     return m
 
@@ -195,35 +195,41 @@ def prepare_data(char_seqs, labels, maxw, maxwlen):
         # s_w is a list of words
         # l is a list of labels
         c = 0
+        p = 0
         warning = None
         for j, a in enumerate(s_c):
             # j is the current character in this tweet
             # idx is the current tweet in this minibatch
             # c is the current word (can be up to 16)
+            # p is the current character in this word
 
             if a == 0:
                 # This current character is a space
                 # Increase the word count and continue
                 c += 1
+                p = 0
+                j += 1 # Temporarily skip to next loop char
                 if c >= maxw:
                     if j != len(s_c):
                         warning = "truncation: too many words in this tweet! {}-{}".format(j, len(s_c))
                     break
                 if c >= len(l):
                     if j != len(s_c):
-                        warning = "truncation: too many words for these labels"
+                        warning = "truncation: too many words for these labels {}-{}".format(j, len(s_c))
                     break
 
-            if j >= x_c.shape[1]:
-                #warning = "truncation: too many characters for this maxwlen"
-                break
+            if p >= x_c.shape[1]:
+                warning = "truncation: too many characters for this maxwlen"
+            else:
+                x_c[c, p, idx] = a
+                x_mask[c, p, idx] = 1
 
-            x_c[c, j, idx] = a
-            x_mask[c, j, idx] = 1
             y[c, idx] = l[c]
             y_mask[c, idx] = 1
+            p += 1
 
         if warning is not None:
-            logging.warning("%s", warning)
+            #logging.warning("%s", warning)
+            pass
 
     return x_c, x_mask, y, y_mask
