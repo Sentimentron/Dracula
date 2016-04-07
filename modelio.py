@@ -68,7 +68,7 @@ def get_tweet_words(path):
 def get_max_word_count(path):
     t = get_tweet_words(path)
     m = [len(t[c]) for c in t]
-    m = int(numpy.percentile(m, 50))
+    m = int(numpy.percentile(m, 95))
     #m = int(numpy.median([len(t[c]) for c in t]))
     logging.debug("get_max_word_count('%s') = %d", path, m)
     return m
@@ -168,7 +168,7 @@ def string_to_unprepared_format(text, chardict, worddict):
     chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
     return [], chars, words, labels
 
-def prepare_data(char_seqs, labels, maxw, maxwlen):
+def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
     """
     Create the matrices from the datasets.
 
@@ -185,7 +185,7 @@ def prepare_data(char_seqs, labels, maxw, maxwlen):
     n_samples = len(char_seqs)
 
     x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
-    x_mask = numpy.zeros((maxw, maxwlen, n_samples)).astype(theano.config.floatX)
+    x_mask = numpy.zeros((maxw, maxwlen, n_samples, dim_proj)).astype(theano.config.floatX)
     y = numpy.zeros((maxw, n_samples)).astype('int8')
     y_mask = numpy.zeros((maxw, n_samples)).astype('int8')
 
@@ -222,7 +222,7 @@ def prepare_data(char_seqs, labels, maxw, maxwlen):
                 warning = "truncation: too many characters for this maxwlen"
             else:
                 x_c[c, p, idx] = a
-                x_mask[c, p, idx] = 1
+                x_mask[c, p, idx] = numpy.ones(dim_proj)
 
             y[c, idx] = l[c]
             y_mask[c, idx] = 1

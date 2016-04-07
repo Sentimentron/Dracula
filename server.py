@@ -39,8 +39,8 @@ def get_lstm(
     char_dict = {},
     word_dict = {},
     pos_dict = {},
-    letter_layers=2,
-    word_layers=5
+    letter_layers=3,
+    word_layers=6
 ):
 
     # Model options
@@ -119,7 +119,7 @@ def hello():
           response["tokenization_errors"] = errors
 
       # TODO: 32 is the n_proj
-      xc, mask, y, y_mask = prepare_data(chars, labels, max_word_count, max_word_length)
+      xc, mask, y, y_mask = prepare_data(chars, labels, max_word_count, max_word_length, 64)
 
       pred = model[-3](xc, mask, y_mask)
       probs = model[-4](xc, mask, y_mask)
