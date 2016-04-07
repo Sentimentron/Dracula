@@ -19,7 +19,8 @@ def embeddings_layer(x, Wemb, dim_proj):
     n_max_letters_in_word = x.shape[1]
     n_batch = x.shape[2]
 
-    return Wemb[x.flatten()].reshape([n_words, n_max_letters_in_word, n_batch, dim_proj])
+    dist = Wemb[x.flatten()].reshape([n_words, n_max_letters_in_word, n_batch, dim_proj])
+    return dist
 
 
 def lstm_mask_layer(proj, mask):

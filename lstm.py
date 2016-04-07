@@ -32,7 +32,7 @@ numpy.random.seed(SEED)
 
 def build_model(tparams, options, maxw, training=True):
     xc = tensor.tensor3('xc', dtype='int8')
-    mask = tensor.tensor3('mask', dtype=config.floatX)
+    mask = tensor.tensor4('mask', dtype=config.floatX)
     y = tensor.matrix('y', dtype='int8')
     y_mask = tensor.matrix('y_mask', dtype='int8')
 
@@ -41,7 +41,7 @@ def build_model(tparams, options, maxw, training=True):
     emb = embeddings_layer(xc, tparams['Cemb'], options['dim_proj'])
 
     dist = emb
-    dist_mask = tensor.neq(dist, numpy_floatX(0.0))
+    dist_mask = mask
 
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)
@@ -99,7 +99,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=48,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=64,  # character embedding dimension and LSTM number of hidden units.
     patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -252,10 +252,10 @@ def train_lstm(
                 n_proj = dim_proj_chars# + dim_proj_words
                 #def prepare_data(char_seqs, labels, maxw, maxwlen):
                 xc, mask, y, y_mask = prepare_data(x_c, y,
-                                                  max_word_count,
-                                                  max_word_length)
+                                                   max_word_count,
+                                                   max_word_length,
+                                                   dim_proj_chars)
                 n_samples += xc.shape[1]
-                assert xc.shape == mask.shape
 
                 cost = f_grad_shared(xc, mask, y, y_mask)
                 f_update(lrate)
@@ -279,11 +279,11 @@ def train_lstm(
                     logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
-                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length)
+                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
 
                     if not pretrain:
                         #train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, max_word_length, n_proj)
-                        test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length)
+                        test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
                         history_errs.append([valid_err, test_err])
                     else:
                         history_errs.append([valid_err, 0.0])
@@ -324,9 +324,9 @@ def train_lstm(
         best_p = unzip(tparams)
 
     kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, max_word_count, max_word_length)
-    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length)
-    test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length)
+    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, max_word_count, max_word_length, dim_proj_chars)
+    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
+    test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
 
     logging.info("Train %.4f, Valid %.4f, Test %.4f",
                                      100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
