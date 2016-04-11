@@ -20,8 +20,6 @@ documents_all_correct = 0
 debug_dump = open('debug.csv', 'w')
 
 def get_from_server(words, tags, debugf):
-    if len(words) > 22:
-        return
     global tag_dict
     global inv_tag_dict
     global all_tags_ref
