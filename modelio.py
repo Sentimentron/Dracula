@@ -14,8 +14,9 @@ from collections import defaultdict
 
 def build_character_dictionary(path, chars = {}):
     with open(path, 'r') as fin:
-        lineno = 1
+        lineno = 0
         for line in fin:
+            lineno += 1
             line = line.strip()
             if len(line) == 0:
                 continue
@@ -26,7 +27,6 @@ def build_character_dictionary(path, chars = {}):
                         chars[c] = len(chars) + 1
             except ValueError as ex:
                 print ex, lineno, line
-            lineno += 1
     return chars
 
 def build_word_dictionary(path, words = {}):
@@ -60,7 +60,7 @@ def get_tweet_words(path):
             if len(line) == 0:
                 c += 1
                 continue
-            word, pos = line.split()
+            word, pos = line.split('\t')
             word = word.decode('utf8')
             t[c].append(word)
     return t
@@ -68,7 +68,7 @@ def get_tweet_words(path):
 def get_max_word_count(path):
     t = get_tweet_words(path)
     m = [len(t[c]) for c in t]
-    m = int(numpy.percentile(m, 95))
+    m = int(numpy.percentile(m, 99))
     #m = int(numpy.median([len(t[c]) for c in t]))
     logging.debug("get_max_word_count('%s') = %d", path, m)
     return m
@@ -83,7 +83,7 @@ def get_max_word_length(path):
             if len(w) >= m:
                 m = len(w)
                 logging.debug('length: %s, %d', w, m)
-    m = numpy.percentile(d, 98)
+    m = numpy.percentile(d, 99)
     logging.debug("get_max_word_length('%s') = %d", path, m)
     return m
 
