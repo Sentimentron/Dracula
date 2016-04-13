@@ -43,6 +43,8 @@ def build_model(tparams, options, maxw, training=True):
     dist = emb
     dist_mask = mask
 
+    dist = dist * dist_mask
+
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)
 
@@ -108,8 +110,8 @@ def train_lstm(
     optimizer=adadelta,  # sgd, adadelta and rmsprop available, sgd very hard to use, not recommanded (probably need momentum and decaying learning rate).
     encoder='lstm',  # TODO: can be removed must be lstm.
     saveto='lstm_model.npz',  # The best model will be saved there
-    validFreq=450,  # Compute the validation error after this number of update.
-    saveFreq=1110,  # Save the parameters after every saveFreq updates
+    validFreq=900,  # Compute the validation error after this number of update.
+    saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
     batch_size=50,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
@@ -155,7 +157,7 @@ def train_lstm(
     max_length = 0
     # Now load the data for real
     data = load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict, 0)
-    train, eval = split_at(data, 0.30)
+    train, eval = split_at(data, 0.05)
     test, valid = split_at(eval, 0.50)
     max_word_count = max(max_word_count, \
     get_max_word_count(input_path))
