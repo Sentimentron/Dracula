@@ -120,7 +120,7 @@ def hello():
 
       # TODO: 32 is the n_proj
       xc, mask, y, y_mask = prepare_data(chars, labels, max_word_count, \
-      max_word_length, 16)
+      max_word_length, 32)
 
       pred = model[-3](xc, mask, y_mask)
       probs = model[-4](xc, mask, y_mask)
