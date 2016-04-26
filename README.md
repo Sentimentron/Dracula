@@ -1,4 +1,4 @@
-You're looking at the <code>2016-04-16</code> release of *Dracula*, a part-of-speech tagger optimized for Twitter. This branch represents the release, the actual contents of this branch may change as additional things are documented, but there will be no functional changes.
+You're looking at the <code>2016-04-16</code> release of *Dracula*, a part-of-speech tagger optimized for Twitter. This tagger offers very competitive performance whilst only learning character embeddings and neural network weights, meaning it requires considerably less pre-processing that another techniques. This branch represents the release, the actual contents of this branch may change as additional things are documented, but there will be no functional changes.
 
 ## Background
 
