@@ -4,8 +4,9 @@ import theano.tensor
 import numpy
 import logging
 
-from nn_layers import per_word_averaging_layer
+from nn_layers import per_word_averaging_layer, embeddings_layer
 
+import tensorflow as tf
 
 class WordAveragingOpTests(unittest.TestCase):
     @classmethod
@@ -35,6 +36,35 @@ class WordAveragingOpTests(unittest.TestCase):
         O[0, 1, :] = [-0.4, 0.2, 0.8, 0.9]  # First word, second tweet
 
         return n_chars, n_samples, n_proj, L, W, O
+
+    def test_embedding_layer(self):
+        L = numpy.zeros((4, 4))
+        L[0, :] = [0.2, 0.3, 0.4, 0.5]
+        L[1, :] = [-0.2, -0.4, 0.6, 0.7]
+        L[2, :] = [0.8, -0.2, 0.3, -0.1]
+        L[3, :] = [-0.4, 0.2, 0.8, 0.9]
+
+        l = tf.Variable(L, name='emb')
+
+        P = numpy.zeros((4, 4))
+        P[0, 0] = 1
+        P[0, 1] = 2
+        P[0, 3] = 3
+        P[1, 0] = 1
+        P[1, 1] = 2
+        p = tf.constant(P, dtype='int32', name='char')
+
+        init = tf.initialize_all_variables()
+        sess = tf.Session()
+        sess.run(init)
+
+        R = embeddings_layer(p, l).eval(session=sess)
+
+        self.assertTrue(numpy.allclose(R[0, 0], [-0.2, -0.4, 0.6, 0.7]))
+        self.assertTrue(numpy.allclose(R[0, 1], [0.8, -0.2, 0.3, -0.1]))
+        self.assertTrue(numpy.allclose(R[0, 3], [-0.4, 0.2, 0.8, 0.9]))
+        self.assertTrue(numpy.allclose(R[1, 0], [-0.2, -0.4, 0.6, 0.7]))
+        self.assertTrue(numpy.allclose(R[1, 1], [0.8, -0.2, 0.3, -0.1]))
 
     def test_forward(self):
         n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()

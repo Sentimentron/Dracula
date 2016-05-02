@@ -7,7 +7,9 @@ from theano import tensor
 from util import numpy_floatX
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-def embeddings_layer(x, Wemb, dim_proj):
+import tensorflow as tf
+
+def embeddings_layer(x, Wemb):
     """
     Returns the one-hot vector x after encoding in the Wemb embedding space.
     :param x: One-hot index vector (25, 23...)
@@ -15,13 +17,7 @@ def embeddings_layer(x, Wemb, dim_proj):
     :return:
     """
 
-    n_words = x.shape[0]
-    n_max_letters_in_word = x.shape[1]
-    n_batch = x.shape[2]
-
-    dist = Wemb[x.flatten()].reshape([n_words, n_max_letters_in_word, n_batch, dim_proj])
-    return dist
-
+    return tf.gather(Wemb, x)
 
 def lstm_mask_layer(proj, mask):
     """
@@ -32,7 +28,7 @@ def lstm_mask_layer(proj, mask):
     :return: The masked values
     """
 
-    return proj * mask[:, :, None]
+    return tf.matmul(proj, mask)
 
 def per_word_averaging_layer(dist, dist_mask):
     """
