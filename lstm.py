@@ -54,16 +54,7 @@ def build_model(tparams, options, maxw, training=True):
 
         dist, updates = theano.scan(_step, sequences=[dist], n_steps=dist.shape[0])
 
-    dist = dist.dimshuffle(1, 2, 0, 3)
-    dist_mask = tensor.cast(dist_mask, theano.config.floatX)
-    dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
-    divider = dist_mask.sum(axis=0)
-    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
-
-    dist = dist * dist_mask
-    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
-    tmp /= divider
-    proj2 = tmp.dimshuffle(1, 0, 2)
+    proj2 = per_word_averaging_layer(dist, dist_mask)
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)

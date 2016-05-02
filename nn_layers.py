@@ -34,59 +34,25 @@ def lstm_mask_layer(proj, mask):
 
     return proj * mask[:, :, None]
 
-def per_word_averaging_layer_distrib(proj, wmask, maxw):
-    """
-
-    """
-    print maxw, "MAXW"
-    dup = [tensor.shape_padaxis(proj, 0) for _ in range(maxw)]
-    dup = tensor.concatenate(dup, 0)
-    #dup = tensor.shape_padaxis(proj, 0)
-
-    mul = tensor.mul(wmask, dup)
-    mul = theano.printing.Print("mul", attrs=["shape"])(mul)
-#    mul = mul[mul.nonzero()]
-#    mul = mul[mul != 0]
-    compare = tensor.eq(mul, numpy_floatX(0.))
-    mul = mul[(1-compare).nonzero()[0]]
-    mul = theano.printing.Print("mul", attrs=["shape"])(mul)
-#    mul = theano.printing.Print("mul")(mul)
-    return mul
-
-def per_word_averaging_layer(proj, wmask, maxw, trim=False):
+def per_word_averaging_layer(dist, dist_mask):
     """
     :param proj: Output of the LSTM layer
-    :param wmask: Unravelled 4D-index tensor (represented in 2d)
+    :param dist_mask: 4D index tensor
     :return: The per-word averages.
     """
-    n_chars = proj.shape[0]
-    n_samples = proj.shape[1]
-    n_proj = proj.shape[2]
 
-    dist = per_word_averaging_layer_distrib(proj, wmask, maxw)
+    dist = dist * dist_mask
 
     dist = dist.dimshuffle(1, 2, 0, 3)
+    dist_mask = tensor.cast(dist_mask, theano.config.floatX)
+    dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
+    divider = dist_mask.sum(axis=0)
+    divider += tensor.eq(divider, numpy_floatX(0.0))
 
-    divider = tensor.cast(tensor.neq(dist, numpy_floatX(0.0)).sum(axis=0), theano.config.floatX)
-    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
-
+    dist = dist * dist_mask
     tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
     tmp /= divider
-
-    # tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
-
-    #_max = dist.max(axis=0)
-    #_min = dist.min(axis=0)
-
-    #tmp = tensor.concatenate([tmp, _max, _min], axis=2)
-    #    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
-
-    if not trim:
-        return tmp
-    else:
-        ret = tensor.zeros_like(tmp)
-        ret = tensor.set_subtensor(ret[:, :-1], tmp[:, 1:])
-        return tensor.cast(ret, theano.config.floatX)
+    return tmp.dimshuffle(1, 0, 2)
 
 def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     """
