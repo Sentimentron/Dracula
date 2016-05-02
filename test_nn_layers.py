@@ -68,13 +68,15 @@ class WordAveragingOpTests(unittest.TestCase):
 
     def test_forward(self):
         n_chars, n_samples, n_proj, L, W, O = WordAveragingOpTests.get_std()
-        LArg = theano.tensor.dtensor4()
-        WArg = theano.tensor.dtensor4()
 
-        out = per_word_averaging_layer(LArg, WArg)
-        f = theano.function([LArg, WArg], out, on_unused_input='ignore')
+        l = tf.Variable(L, name='L', dtype='float32')
+        w = tf.Variable(W, name='W', dtype='float32')
 
-        O_actual = f(L, W)
+        init = tf.initialize_all_variables()
+        sess = tf.Session()
+        sess.run(init)
+
+        O_actual = per_word_averaging_layer(l, w).eval(session=sess)
 
         if False:
             print O.shape, O_actual.shape

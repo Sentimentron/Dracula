@@ -32,23 +32,31 @@ def lstm_mask_layer(proj, mask):
 
 def per_word_averaging_layer(dist, dist_mask):
     """
+    Average everything per-word.
     :param proj: Output of the LSTM layer
-    :param dist_mask: 4D index tensor
-    :return: The per-word averages.
+    :param wmask: The map of word -> character embeddings as a [word, character_index, tweet, all_ones_dim_proj] matrix
+    :param maxw: The maximum character-per-word offset
+    :param trim: Whether to trim undefined regions in the result
+    :return: The per-word averages
     """
 
-    dist = dist * dist_mask
+    dist = tf.mul(dist, dist_mask)
 
-    dist = dist.dimshuffle(1, 2, 0, 3)
-    dist_mask = tensor.cast(dist_mask, theano.config.floatX)
-    dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
-    divider = dist_mask.sum(axis=0)
-    divider += tensor.eq(divider, numpy_floatX(0.0))
+    # Transpose everything so it's the same as Theano
+    dist = tf.transpose(dist, [1, 2, 0, 3])
 
-    dist = dist * dist_mask
-    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
-    tmp /= divider
-    return tmp.dimshuffle(1, 0, 2)
+    dist_mask = tf.transpose(dist_mask, [1, 2, 0, 3])
+
+    divider = tf.reduce_sum(dist_mask, 0)
+    divider = tf.cast(divider, dtype='float32')
+    normalizer = tf.equal(divider, 0.0)
+    normalizer = tf.cast(normalizer, dtype='float32')
+    divider = tf.add(divider, normalizer)
+
+    tmp = tf.reduce_sum(dist, 0)
+    tmp = tf.div(tmp, divider)
+
+    return tf.transpose(tmp, [1, 0, 2])
 
 def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     """
