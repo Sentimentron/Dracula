@@ -5,8 +5,10 @@
 """
 
 import unittest
-from modelio import load_pos_tagged_data, prepare_data
 import logging
+
+from modelio import load_pos_tagged_data, prepare_data
+import numpy as np
 
 class TestIOMethods(unittest.TestCase):
 
@@ -92,23 +94,27 @@ class TestIOMethods(unittest.TestCase):
         self.assertEquals(len(labels), 10)
 
     def test_prepare_data(self):
-        chars, words, labels = load_pos_tagged_data("Data/test_read_2.conll")
-        xc, x_mask, y, y_mask = prepare_data(chars, labels, 2, 15)
+        char, word, pos = {}, {}, {}
+        chars, words, labels = load_pos_tagged_data("Data/test_read_2.conll", \
+        char, word, pos)
+        xc, x_mask, y, y_mask = prepare_data(chars, labels, 2, 15, 16)
 
         print chars
 
         # 15 is the maximum length of any word
         self.assertEquals(xc.shape, (2, 15, 10))
-        self.assertEquals(x_mask.shape, (2, 15, 10))
+        self.assertEquals(x_mask.shape, (2, 15, 10, 16))
         self.assertEquals(y.shape, (2, 10))
 
         xc7 = list(xc[0, :7, 0])
         logging.debug(xc7)
         self.assertEquals(xc7, [1, 2, 3, 4, 5, 6, 7])
 
-        xm7 = list(x_mask[0, :7, 0])
+        xm7 = list(x_mask[0, :7, 0, 0])
         logging.debug(xm7)
         self.assertEquals(xm7, [1, 1, 1, 1, 1, 1, 1])
+
+        self.assertTrue(np.allclose(x_mask[0, 0, 0, :], np.ones(16)))
 
        # self.assertEquals(list(xc[:, 0]), [1, 2, 3, 4, 5, 6, 7], [0, 0, 0, 0, 0, 0, 0, 0])
         #self.assertEquals(list(x_mask[:, 0]), [1, 1, 1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 0, 0, 0])
