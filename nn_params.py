@@ -11,6 +11,7 @@ import numpy
 import theano
 from theano import config
 
+import tensorflow as tf
 
 def _p(pp, name):
     return '%s_%s' % (pp, name)
@@ -60,7 +61,7 @@ def generate_init_params(options, params):
 def init_tparams(params):
     tparams = OrderedDict()
     for kk, pp in params.iteritems():
-        tparams[kk] = theano.shared(params[kk], name=kk)
+        tparams[kk] = tf.Variable(params[kk], name=kk, dtype='float32')
     return tparams
 
 def ortho_weight(ndim):

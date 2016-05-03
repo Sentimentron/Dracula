@@ -58,9 +58,9 @@ def per_word_averaging_layer(dist, dist_mask):
 
     return tf.transpose(tmp, [1, 0, 2])
 
-def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
+def logits_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     """
-    Produces the final labels via softmax
+    Unscaled logits output.
     :param avg_per_word: Output from word-averaging
     :param U: Classification weight matrix
     :param b: Classification bias layer
@@ -68,26 +68,19 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
                     where the output is undefined, causing this thing to output the special 0 label (for "don't care")
     :return: Softmax predictions
     """
-    #avg_per_word = theano.printing.Print("avg_per_word")(avg_per_word)
+    preds, raw_preds = None, None
+
+    def softmax_fn(current_input):
+        return tf.matmul(current_input, U) + b
+
+    #avg_per_word = tf.Print(avg_per_word, [avg_per_word], message="avg")
     if training:
-        srng = RandomStreams(seed=12345)
-        dropout_mask = tensor.cast(srng.binomial(size=U.shape, p=0.5), theano.config.floatX)
-        #U = theano.printing.Print("U", attrs=["shape"])(U)
-        #dropout_mask = theano.printing.Print("dropout_mask", attrs=["shape"])(dropout_mask)
-        raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tensor.mul(U, dropout_mask)) + b),
-                                  outputs_info=None,
-                                  sequences=[avg_per_word, tensor.arange(maxw)]
-                                  )
+        keep_prob = 0.5
+        dropout_mask = tf.nn.dropout(avg_per_word, keep_prob)
+        raw_preds = tf.map_fn(softmax_fn, dropout_mask)
     else:
-        raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U) + b),
-				  outputs_info=None,
-				  sequences=[avg_per_word, tensor.arange(maxw)]
-				  )
+        raw_preds = tf.map_fn(softmax_fn, avg_per_word)
 
-    #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
-    #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)
-    pred = tensor.zeros_like(raw_pred)
-    pred = tensor.inc_subtensor(pred[:, :, 0], 1)
-    pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
+#    return tf.mul(raw_preds, y_mask)
+    return raw_preds
 
-    return pred

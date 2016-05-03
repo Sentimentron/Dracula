@@ -23,6 +23,8 @@ from nn_optimizers import *
 from nn_support import pred_error
 from nn_serialization import zipp, unzip, load_params
 
+from tensorflow.models.rnn import rnn_cell
+
 import os.path
 import pickle
 
@@ -31,49 +33,67 @@ SEED = 123
 numpy.random.seed(SEED)
 
 def build_model(tparams, options, maxw, training=True):
-    xc = tensor.tensor3('xc', dtype='int8')
-    mask = tensor.tensor4('mask', dtype=config.floatX)
-    y = tensor.matrix('y', dtype='int8')
-    y_mask = tensor.matrix('y_mask', dtype='int8')
 
-    n_batch = xc.shape[2]
+    xc = tf.placeholder('int32', shape=[32, 20, None])
+    mask = tf.placeholder('float32', shape=[None, None, None, None])
+    y = tf.placeholder('float32', shape=[32, None, 47], name='y')
+    y_mask = tf.placeholder('float32', shape=[None, None, None], name='y_mask')
 
-    emb = embeddings_layer(xc, tparams['Cemb'], options['dim_proj'])
+    emb = embeddings_layer(xc, tparams['Cemb'])
 
     dist = emb
     dist_mask = mask
 
-    dist = dist * dist_mask
+    dist = tf.mul(dist, dist_mask)
 
-    for i in range(options['letter_layers']):
-        name = 'lstm_chars_%d' % (i + 1,)
+    if False:
+        cell = rnn_cell.BasicLSTMCell(num_units=40)
+        stacked_lstm = rnn_cell.MultiRNNCell([lstm] * number_of_layers)
+        initial_state = cell.zero_state(50, tf.float32)
 
-        def _step(x_):
-            t = bidirectional_lstm_layer(tparams, x_, options, name)
-            return t
 
-        dist, updates = theano.scan(_step, sequences=[dist], n_steps=dist.shape[0])
+        for i in range(options['letter_layers']):
+            name = 'lstm_chars_%d' % (i + 1,)
+
+            def _step(cur_input):
+                t = bidirectional_lstm_layer(tparams, cur_input, options, name)
+                return t
+
+            dist = tf.map_fn(_step, dist)
 
     proj2 = per_word_averaging_layer(dist, dist_mask)
 
-    for i in range(options['word_layers']):
-        name = 'lstm_words_%d' % (i + 1,)
-        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
+    if False:
+        for i in range(options['word_layers']):
+            name = 'lstm_words_%d' % (i + 1,)
+            proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
-    pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
-    #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+    pred_logits = logits_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
 
-    f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    def softmax_fn(x):
+        return tf.nn.softmax(x)
 
-    def cost_scan_i(i, j, free_var):
-        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
+    pred_prob = tf.map_fn(softmax_fn, pred_logits)
+    pred = tf.argmax(pred_prob, 2, name='pred')
 
-    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
+    cost = -tf.reduce_mean(y * tf.log(pred_prob))
 
-    cost = cost.mean()
+    #def cost_fn(i):
+    #    return tf.nn.sparse_softmax_cross_entropy_with_logits(pred_logits[i],\
+    #    y[:, i])
 
-    return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
+    #cost = tf.map_fn(cost_fn, tf.range(0, 50))
+
+#    cost = tf.zeros_like(pred, dtype='float32')
+#    for i in range(50):
+#        cost = tf.add(cost, tf.nn.sparse_softmax_cross_entropy_with_logits(pred_logits[:,
+#        i, :], y[:, i]))
+
+    #cost = tf.reduce_sum(tf.div(cost, 50))
+#    cost = tf.map_fn(lambda x: cost_fn(x, pred_logits, y), tf.range(0, 4))
+#    cost = tf.reduce_mean(cost)
+
+    return xc, mask, y, y_mask, pred_prob, pred, cost
 
 def split_at(src, prop):
     src_chars, src_words, src_labels = [], [], []
@@ -136,15 +156,15 @@ def train_lstm(
     # Load the training data
     print 'Loading data'
 
-    input_path = "Data/Gate-Train.conll"
+    input_path = "Data/Gate.conll"
 
     load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict)
 
     with open("substitutions.pkl", "rb") as fin:
         word_dict = pickle.load(fin)
 
-    max_word_count = 0
-    max_word_length = 0
+    max_word_count = 32
+    max_word_length = 20
     max_length = 0
     # Now load the data for real
     data = load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict, 0)
@@ -173,33 +193,7 @@ def train_lstm(
     # Dict name (string) -> numpy ndarray
     params = init_params(model_options, reload_model is not None)
 
-    logging.info('Building model')
-
-    # This create Theano Shared Variable from the parameters.
-    # Dict name (string) -> Theano Tensor Shared Variable
-    # params and tparams have different copy of the weights.
-    tparams = init_tparams(params)
-
-    # use_noise is for dropout
-    (xc, mask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
-
-    if decay_c > 0.:
-        decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
-        weight_decay = 0.
-        weight_decay += (tparams['U'] ** 2).sum()
-        weight_decay *= decay_c
-        cost += weight_decay
-
-    f_cost = theano.function([xc, mask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
-
-    grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([xc, mask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
-
-    lr = tensor.scalar(name='lr')
-    f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        xc, mask, y, y_mask, cost)
-
+    logging.info("Configuring minibatches...")
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
 
@@ -222,9 +216,53 @@ def train_lstm(
     estop = False  # early stop
     start_time = time.clock()
 
-    trng = RandomStreams(123)
+    logging.info('Building model')
+    with tf.Graph().as_default():
 
-    try:
+        # Create TensorFlow variables from the parameters
+        tparams = init_tparams(params)
+
+        # Initialize the TensorFlow session
+        sm = tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
+        saver = tf.train.Saver(tparams)
+        sess = sm.prepare_session("", init_op=tf.initialize_all_variables(),
+                                      saver=saver)
+        (xc, mask,
+        y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
+
+        def pred_error(f_pred, prepare_data, data, iterator, maxw, \
+        max_word_length, dim_proj):
+            valid_err = []
+            valid_shapes = []
+            for _, valid_index in iterator:
+                _xc, _mask, _y, _y_mask = prepare_data([data[0][t] for t in \
+                valid_index], numpy.array(data[2])[valid_index], maxw, \
+                max_word_length, dim_proj)
+                cur_feed_dict = {
+                    xc: _xc, mask: _mask, y: _y, y_mask: _y_mask
+                }
+                preds = sess.run(f_pred, \
+                feed_dict=cur_feed_dict)
+                _y = numpy.argmax(_y, axis=2)
+                preds = preds[numpy.nonzero(_y)]
+                acc = numpy.equal(preds, _y[numpy.nonzero(_y)])
+                valid_shapes.append(preds.size)
+                valid_err.append(acc.sum())
+            valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() /\
+            numpy.asarray(valid_shapes).sum()
+            return valid_err
+
+
+        if decay_c > 0.:
+            decay_c = tf.constant(numpy_floatX(decay_c), name='decay_c', \
+            dtype='float32')
+            weight_decay = 0.
+            weight_decay += tf.reduce_sum(tparams['U'] ** 2)
+            weight_decay *= decay_c
+            cost += weight_decay
+
+        train_step = tf.train.GradientDescentOptimizer(0.0005).minimize(cost)
+
         for eidx in xrange(max_epochs):
             n_samples = 0
 
@@ -235,7 +273,7 @@ def train_lstm(
                 uidx += 1
 
                 # Select the random examples for this minibatch
-                y = [train[2][t] for t in train_index]
+                _y = [train[2][t] for t in train_index]
                 x_c = [train[0][t] for t in train_index]
                 x_w = [train[1][t] for t in train_index]
 
@@ -244,21 +282,23 @@ def train_lstm(
                 # Return something of shape (minibatch maxlen, n samples)
                 n_proj = dim_proj_chars# + dim_proj_words
                 #def prepare_data(char_seqs, labels, maxw, maxwlen):
-                xc, mask, y, y_mask = prepare_data(x_c, y,
+                _xc, _mask, _y, _y_mask = prepare_data(x_c, _y,
                                                    max_word_count,
                                                    max_word_length,
                                                    dim_proj_chars)
-                n_samples += xc.shape[1]
 
-                cost = f_grad_shared(xc, mask, y, y_mask)
-                f_update(lrate)
+                cur_feed_dict = {
+                    xc: _xc, mask: _mask, y: _y, y_mask: _y_mask
+                }
 
-                if numpy.isnan(cost) or numpy.isinf(cost):
-                    logging.error('NaN detected (bad cost)')
-                    return 1., 1., 1.
+                train_step.run(cur_feed_dict, session=sess)
+
 
                 if numpy.mod(uidx, dispFreq) == 0:
-                    logging.info('Epoch %d, Update %d, Cost %.4f', eidx, uidx, cost)
+#                    _cost = cost(xc=_xc, mask=_mask, y=_y, y_mask=_y_mask)
+                    _cost = sess.run([cost], feed_dict=cur_feed_dict)[0]
+                    logging.info('Epoch %d, Update %d, Cost %.4f', eidx, uidx,
+                    _cost)
 
                 if saveto and numpy.mod(uidx, saveFreq) == 0:
                     logging.info('Saving to %s', saveto)
@@ -267,15 +307,14 @@ def train_lstm(
                         params = best_p
                     else:
                         params = unzip(tparams)
-                    numpy.savez(saveto, history_errs=history_errs, **params)
-                    pkl.dump(model_options, open('%s.pkl' % saveto, 'wb'), -1)
+                    saver.save(sess, saveto)
                     logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
-                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
+                    valid_err = pred_error(f_pred, prepare_data, valid,
+                    kf_valid, max_word_count, max_word_length, dim_proj_chars)
 
                     if not pretrain:
-                        #train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, max_word_length, n_proj)
                         test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
                         history_errs.append([valid_err, test_err])
                     else:
@@ -307,9 +346,6 @@ def train_lstm(
             if estop:
                 break
 
-    except KeyboardInterrupt:
-        logging.warn("Training interrupted")
-
     end_time = time.clock()
     if best_p is not None:
         zipp(best_p, tparams)
@@ -326,6 +362,7 @@ def train_lstm(
 
     if saveto:
         logging.info("Saving to %s...", saveto)
+
         numpy.savez(saveto, train_err=train_err,
                     valid_err=valid_err, test_err=test_err,
                     history_errs=history_errs, **best_p)

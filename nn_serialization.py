@@ -15,7 +15,7 @@ def zipp(params, tparams):
     When we reload the model. Needed for the GPU stuff.
     """
     for kk, vv in params.iteritems():
-        tparams[kk].set_value(vv)
+        tparams[kk] = vv
 
 
 def unzip(zipped):
@@ -24,7 +24,7 @@ def unzip(zipped):
     """
     new_params = OrderedDict()
     for kk, vv in zipped.iteritems():
-        new_params[kk] = vv.get_value()
+        new_params[kk] = vv
     return new_params
 
 def load_params(path, params):

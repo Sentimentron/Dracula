@@ -168,7 +168,7 @@ def string_to_unprepared_format(text, chardict, worddict):
     chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
     return [], chars, words, labels
 
-def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
+def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj, max_y=47):
     """
     Create the matrices from the datasets.
 
@@ -186,8 +186,8 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
 
     x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
     x_mask = numpy.zeros((maxw, maxwlen, n_samples, dim_proj)).astype(theano.config.floatX)
-    y = numpy.zeros((maxw, n_samples)).astype('int8')
-    y_mask = numpy.zeros((maxw, n_samples)).astype('int8')
+    y = numpy.zeros((maxw, n_samples, max_y)).astype('int8')
+    y_mask = numpy.zeros((maxw, n_samples, max_y)).astype('int8')
 
     for idx, (s_c, l) in enumerate(zip(char_seqs, labels)):
         # idx is the current position in the mini-batch
@@ -224,7 +224,7 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
                 x_c[c, p, idx] = a
                 x_mask[c, p, idx] = numpy.ones(dim_proj)
 
-            y[c, idx] = l[c]
+            y[c, idx, l[c]] = 1
             y_mask[c, idx] = 1
             p += 1
 
