@@ -48,7 +48,7 @@ def build_tag_dictionary(path, tags={}):
                 continue
             _, tag = line.split('\t')
             if tag not in tags:
-                tags[tag] = len(tags) + 1
+                tags[tag] = len(tags)
     return tags
 
 def get_tweet_words(path):
@@ -140,7 +140,7 @@ def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, overlap=1
             if pos in posdict:
                 cur_labels.append(posdict[pos])
             else:
-                cur_labels.append(0)
+                cur_labels.append(-1)
 
             if word in worddict:
                 cur_words.append(worddict[word])
@@ -184,10 +184,10 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
     # x: a list of sentences
     n_samples = len(char_seqs)
 
-    x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
+    x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int32')
     x_mask = numpy.zeros((maxw, maxwlen, n_samples, dim_proj)).astype(theano.config.floatX)
-    y = numpy.zeros((maxw, n_samples)).astype('int8')
-    y_mask = numpy.zeros((maxw, n_samples)).astype('int8')
+    y = numpy.zeros((maxw, n_samples)).astype('int32') - 1
+    y_mask = numpy.zeros((maxw, n_samples)).astype('int32')
 
     for idx, (s_c, l) in enumerate(zip(char_seqs, labels)):
         # idx is the current position in the mini-batch

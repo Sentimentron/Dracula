@@ -17,11 +17,13 @@ from util import get_minibatches_idx
 from modelio import load_pos_tagged_data, prepare_data, get_max_word_count, get_max_length, get_max_word_length
 
 from nn_layers import *
-from nn_lstm import lstm_layer, lstm_unmasked_layer, bidirectional_lstm_layer
+from nn_lstm import lstm_layer, lstm_unmasked_layer, bidirectional_lstm_layer, lstm_bidirectional_layer
 from nn_params import *
 from nn_optimizers import *
 from nn_support import pred_error
 from nn_serialization import zipp, unzip, load_params
+
+from tensorflow.models.rnn import rnn_cell
 
 import os.path
 import pickle
@@ -31,58 +33,87 @@ SEED = 123
 numpy.random.seed(SEED)
 
 def build_model(tparams, options, maxw, training=True):
-    xc = tensor.tensor3('xc', dtype='int8')
-    mask = tensor.tensor4('mask', dtype=config.floatX)
-    y = tensor.matrix('y', dtype='int8')
-    y_mask = tensor.matrix('y_mask', dtype='int8')
 
-    n_batch = xc.shape[2]
+    xc = tf.placeholder('int32', shape=[options['max_word_idx'], None, None])
+    mask = tf.placeholder('float32', shape=[options['max_word_idx'], options['max_char_idx'], None, options['dim_proj']])
+    y = tf.placeholder('int32', shape=[options['max_word_idx'], None], name='y')
+    y_mask = tf.placeholder('float32', shape=[options['max_word_idx'], None], name='y_mask')
 
-    emb = embeddings_layer(xc, tparams['Cemb'], options['dim_proj'])
+    #tparams['Cemb'] = tf.Print(tparams['Cemb'], [tparams['Cemb']], message="Cemb")
+    emb = embeddings_layer(xc, tparams['Cemb'])
 
     dist = emb
     dist_mask = mask
 
-    dist = dist * dist_mask
+    #dist = tf.mul(dist, dist_mask)
 
-    for i in range(options['letter_layers']):
-        name = 'lstm_chars_%d' % (i + 1,)
+    if options['letter_layers'] > 0:
+        name = "lstm_chars_1"
+        dist = lstm_bidirectional_layer(tparams, dist, options, prefix=name)
 
-        def _step(x_):
-            t = bidirectional_lstm_layer(tparams, x_, options, name)
-            return t
+    dist = per_word_averaging_layer(dist, dist_mask)
 
-        dist, updates = theano.scan(_step, sequences=[dist], n_steps=dist.shape[0])
+    proj2 = dist
 
-    dist = dist.dimshuffle(1, 2, 0, 3)
-    dist_mask = tensor.cast(dist_mask, theano.config.floatX)
-    dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
-    divider = dist_mask.sum(axis=0)
-    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
+    if False:
+        for i in range(options['word_layers']):
+            name = 'lstm_words_%d' % (i + 1,)
+            proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
-    dist = dist * dist_mask
-    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
-    tmp /= divider
-    proj2 = tmp.dimshuffle(1, 0, 2)
+            #    tparams['U'] = tf.Print(tparams['U'], [tparams['U']], message="U=")
+    pred_prob = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, True, False)
+    pred_logits = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, True, True)
 
-    for i in range(options['word_layers']):
-        name = 'lstm_words_%d' % (i + 1,)
-        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
+    def cost_fn(cur):
+        # TensorFlow does not support negative indexing WTF
+        # labels = cur[:, :, -1]
+        labels = cur[:, 46] # TODO: don't hard-code me
+        labels = tf.cast(labels, dtype='int32')
+        preds = cur[:, :46]
+        # The non-sparse version of this: y
+        return tf.nn.sparse_softmax_cross_entropy_with_logits(preds, labels)
 
-    pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
-    #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+    # Because you can't iterate over two tensors together, concat them
+    y = tf.cast(y, dtype='float32', name="y_casted_to_float32")
+    y_expanded = tf.expand_dims(y, -1, name="y_expanded")
+    #y = tf.expand_dims(y, 2, name="y_expanded_dims")
+    packed_format = tf.concat(2, [pred_logits, y_expanded], name="y_concatenated_with_logits")
+    #packed_format = tf.Print(packed_format, [tf.shape(packed_format)], message="packed_format=")
+    #    cost = tf.map_fn(cost_fn, packed_format)
+    #costs = [cost_fn(packed_format[i, :, :]) for i in range(50)] # TODO: don't hard-code me
+    costs = tf.map_fn(cost_fn, packed_format)
+    #cost = tf.reduce_mean(tf.concat(0, costs))
+    cost = tf.reduce_mean(costs)
 
-    f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    #    cost_logits = -tf.log(tf.transpose(pred_prob, [2, 0, 1]) + 1e-8)
+    #cost_logits = tf.Print(cost_logits, [tf.shape(cost_logits)], message="cost_logits = ")
+    #y = tf.Print(y, [y], message="y = ")
+    #y_eq_zero = tf.eq(y, 0)
+    #y_eq_zero_idx = tf.where(y_eq_zero)
+    #costs = tf.gather(cost_logits, y)
+    #    costs = tf.mul(costs, y_mask)
+    #costs = tf.Print(costs, [costs], message="costs")
+    #cost = tf.reduce_mean(costs)
+    pred = tf.argmax(pred_prob, 2)
 
-    def cost_scan_i(i, j, free_var):
-        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
+    #   cost = -tf.reduce_mean(tf.mul(y_mask, pred_prob[y]))
 
-    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
+    #def cost_fn(i):
+    #    return tf.nn.sparse_softmax_cross_entropy_with_logits(pred_logits[i],\
+    #    y[:, i])
 
-    cost = cost.mean()
+    #cost = tf.map_fn(cost_fn, tf.range(0, 50))
 
-    return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
+#    cost = tf.zeros_like(pred, dtype='float32')
+#    for i in range(50):
+#        cost = tf.add(cost, tf.nn.sparse_softmax_cross_entropy_with_logits(pred_logits[:,
+#        i, :], y[:, i]))
+
+    #cost = tf.reduce_sum(tf.div(cost, 50))
+#    cost = tf.map_fn(lambda x: cost_fn(x, pred_logits, y), tf.range(0, 4))
+#    cost = tf.reduce_mean(cost)
+
+    return xc, mask, y, y_mask, pred_prob, pred, cost
 
 def split_at(src, prop):
     src_chars, src_words, src_labels = [], [], []
@@ -101,7 +132,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=128,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
     patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -114,7 +145,7 @@ def train_lstm(
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
     batch_size=50,  # The batch size during training.
-    valid_batch_size=64,  # The batch size used for validation/test set.
+    valid_batch_size=50,  # The batch size used for validation/test set.
     dataset='imdb',
 
     # Parameter for extra option
@@ -145,15 +176,15 @@ def train_lstm(
     # Load the training data
     print 'Loading data'
 
-    input_path = "Data/Gate-Train.conll"
+    input_path = "Data/Gate.conll"
 
     load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict)
 
     with open("substitutions.pkl", "rb") as fin:
         word_dict = pickle.load(fin)
 
-    max_word_count = 0
-    max_word_length = 0
+    max_word_count = 32
+    max_word_length = 20
     max_length = 0
     # Now load the data for real
     data = load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict, 0)
@@ -164,6 +195,9 @@ def train_lstm(
     max_word_length = max(max_word_length, \
     get_max_word_length(input_path))
     max_length = max(max_word_length, get_max_length(input_path))
+
+    max_word_count = 8
+    max_word_length = 8
 
     #ydim = numpy.max(numpy.max(train[2])) + 1
     #print numpy.max(train[2])
@@ -178,37 +212,18 @@ def train_lstm(
     model_options['char_dict'] = char_dict
     model_options['pos_dict'] = pos_dict
 
+    model_options['max_word_idx'] = max_word_count
+    model_options['max_char_idx'] = max_word_length
+    model_options['batch_size'] = batch_size
+
+
     # This create the initial parameters as numpy ndarrays.
     # Dict name (string) -> numpy ndarray
     params = init_params(model_options, reload_model is not None)
 
-    logging.info('Building model')
+    print params.keys()
 
-    # This create Theano Shared Variable from the parameters.
-    # Dict name (string) -> Theano Tensor Shared Variable
-    # params and tparams have different copy of the weights.
-    tparams = init_tparams(params)
-
-    # use_noise is for dropout
-    (xc, mask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
-
-    if decay_c > 0.:
-        decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
-        weight_decay = 0.
-        weight_decay += (tparams['U'] ** 2).sum()
-        weight_decay *= decay_c
-        cost += weight_decay
-
-    f_cost = theano.function([xc, mask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
-
-    grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([xc, mask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
-
-    lr = tensor.scalar(name='lr')
-    f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        xc, mask, y, y_mask, cost)
-
+    logging.info("Configuring minibatches...")
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
 
@@ -231,9 +246,55 @@ def train_lstm(
     estop = False  # early stop
     start_time = time.clock()
 
-    trng = RandomStreams(123)
+    logging.info('Building model')
+    with tf.Graph().as_default():
 
-    try:
+        tparams = init_tparams(params)
+        # Initialize the TensorFlow session
+        sm = tf.train.SessionManager(ready_op=tf.assert_variables_initialized())
+        # Create TensorFlow variables from the parameters
+        saver = tf.train.Saver(tparams)
+        (xc, mask,
+        y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
+        opt = tf.train.AdamOptimizer()
+        train_step = opt.minimize(cost)
+        sess = sm.prepare_session("", init_op=tf.initialize_all_variables(),
+                                      saver=saver)
+        def pred_error(f_pred, prepare_data, data, iterator, maxw, \
+        max_word_length, dim_proj):
+            valid_err = []
+            valid_shapes = []
+            for _, valid_index in iterator:
+                _xc, _mask, _y, _y_mask = prepare_data([data[0][t] for t in \
+                valid_index], numpy.array(data[2])[valid_index], maxw, \
+                max_word_length, dim_proj)
+                cur_feed_dict = {
+                    xc: _xc, mask: _mask, y: _y, y_mask: _y_mask
+                }
+                preds = sess.run(f_pred, \
+                feed_dict=cur_feed_dict)
+                #                for i, j in zip(preds.flatten(), _y.flatten()):
+                #    print i, j, i == j, (i == 0) and (j == 0)
+                preds = preds[numpy.nonzero(_y_mask)]
+                assert numpy.max(preds) < 47
+                assert numpy.max(_y) < 47
+                #                print preds, _y[numpy.nonzero(_y_mask)]
+                acc = numpy.equal(preds, _y[numpy.nonzero(_y_mask)])
+                valid_shapes.append(preds.size)
+                valid_err.append(acc.sum())
+            valid_err = 1. - 1.0*numpy.asarray(valid_err).sum() /\
+            numpy.asarray(valid_shapes).sum()
+            return valid_err
+
+
+        if decay_c > 0.:
+            decay_c = tf.constant(numpy_floatX(decay_c), name='decay_c', \
+            dtype='float32')
+            weight_decay = 0.
+            weight_decay += tf.reduce_sum(tparams['U'] ** 2)
+            weight_decay *= decay_c
+            cost += weight_decay
+
         for eidx in xrange(max_epochs):
             n_samples = 0
 
@@ -244,7 +305,7 @@ def train_lstm(
                 uidx += 1
 
                 # Select the random examples for this minibatch
-                y = [train[2][t] for t in train_index]
+                _y = [train[2][t] for t in train_index]
                 x_c = [train[0][t] for t in train_index]
                 x_w = [train[1][t] for t in train_index]
 
@@ -253,21 +314,26 @@ def train_lstm(
                 # Return something of shape (minibatch maxlen, n samples)
                 n_proj = dim_proj_chars# + dim_proj_words
                 #def prepare_data(char_seqs, labels, maxw, maxwlen):
-                xc, mask, y, y_mask = prepare_data(x_c, y,
+                _xc, _mask, _y, _y_mask = prepare_data(x_c, _y,
                                                    max_word_count,
                                                    max_word_length,
                                                    dim_proj_chars)
-                n_samples += xc.shape[1]
 
-                cost = f_grad_shared(xc, mask, y, y_mask)
-                f_update(lrate)
+                cur_feed_dict = {
+                    xc: _xc, mask: _mask, y: _y, y_mask: _y_mask
+                }
 
-                if numpy.isnan(cost) or numpy.isinf(cost):
-                    logging.error('NaN detected (bad cost)')
-                    return 1., 1., 1.
+                sess.run(train_step, feed_dict=cur_feed_dict)
+                """                train_step.run(cur_feed_dict, session=sess)
+                grads_and_vars = opt.compute_gradients(cost, tf.trainable_variables())
+                grads = opt.apply_gradients(grads_and_vars)
+                sess.run([grads], feed_dict=cur_feed_dict)"""
 
                 if numpy.mod(uidx, dispFreq) == 0:
-                    logging.info('Epoch %d, Update %d, Cost %.4f', eidx, uidx, cost)
+#                    _cost = cost(xc=_xc, mask=_mask, y=_y, y_mask=_y_mask)
+                    _cost = sess.run([cost], feed_dict=cur_feed_dict)[0]
+                    logging.info('Epoch %d, Update %d, Cost %.4f', eidx, uidx,
+                    _cost)
 
                 if saveto and numpy.mod(uidx, saveFreq) == 0:
                     logging.info('Saving to %s', saveto)
@@ -276,15 +342,14 @@ def train_lstm(
                         params = best_p
                     else:
                         params = unzip(tparams)
-                    numpy.savez(saveto, history_errs=history_errs, **params)
-                    pkl.dump(model_options, open('%s.pkl' % saveto, 'wb'), -1)
+                    saver.save(sess, saveto)
                     logging.info('Incremental save complete')
 
                 if numpy.mod(uidx, validFreq) == 0:
-                    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
+                    valid_err = pred_error(f_pred, prepare_data, valid,
+                    kf_valid, max_word_count, max_word_length, dim_proj_chars)
 
                     if not pretrain:
-                        #train_err = pred_error(f_pred, prepare_data, train, kf, 140, max_word_count, max_word_length, n_proj)
                         test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
                         history_errs.append([valid_err, test_err])
                     else:
@@ -314,36 +379,32 @@ def train_lstm(
             logging.info('Seen %d samples', n_samples)
 
             if estop:
-                break
+                end_time = time.clock()
+                if best_p is not None:
+                    zipp(best_p, tparams)
+                else:
+                    best_p = unzip(tparams)
 
-    except KeyboardInterrupt:
-        logging.warn("Training interrupted")
+                kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
+                train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, max_word_count, max_word_length, dim_proj_chars)
+                valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
+                test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
 
-    end_time = time.clock()
-    if best_p is not None:
-        zipp(best_p, tparams)
-    else:
-        best_p = unzip(tparams)
+                logging.info("Train %.4f, Valid %.4f, Test %.4f",
+                                                 100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
 
-    kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
-    train_err = pred_error(f_pred, prepare_data, train, kf_train_sorted, max_word_count, max_word_length, dim_proj_chars)
-    valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
-    test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
+                if saveto:
+                    logging.info("Saving to %s...", saveto)
+                    saver.save(sess, saveto)
+                    #umpy.savez(saveto, train_err=train_err,
+                    #           valid_err=valid_err, test_err=test_err,
+                    #           history_errs=history_errs, **best_p)
+                logging.info('The code run for %d epochs, with %f sec/epochs',
+                    (eidx + 1), (end_time - start_time) / (1. * (eidx + 1)))
 
-    logging.info("Train %.4f, Valid %.4f, Test %.4f",
-                                     100*(1-train_err), 100*(1-valid_err), 100*(1-test_err))
-
-    if saveto:
-        logging.info("Saving to %s...", saveto)
-        numpy.savez(saveto, train_err=train_err,
-                    valid_err=valid_err, test_err=test_err,
-                    history_errs=history_errs, **best_p)
-    logging.info('The code run for %d epochs, with %f sec/epochs',
-        (eidx + 1), (end_time - start_time) / (1. * (eidx + 1)))
-
-    logging.info('Training took %.1fs',
-                          (end_time - start_time))
-    return train_err, valid_err, test_err
+                logging.info('Training took %.1fs',
+                                      (end_time - start_time))
+                return train_err, valid_err, test_err
 
 
 if __name__ == '__main__':

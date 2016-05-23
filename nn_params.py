@@ -11,6 +11,7 @@ import numpy
 import theano
 from theano import config
 
+import tensorflow as tf
 
 def _p(pp, name):
     return '%s_%s' % (pp, name)
@@ -38,13 +39,18 @@ def init_params(options, reloaded=False):
 
 def generate_init_params(options, params):
 
+#    for k in options:
+#        params[k] = options[k]
+
     randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])*2 - 1
+    params['lr'] = 1
     params['Cemb'] = (0.01 * randn).astype(config.floatX)
 
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)
-        params = param_init_bidirection_lstm(options, params, prefix=name)
+        #params = param_init_bidirection_lstm(options, params, prefix=name)
+        params = param_init_lstm(options, params, prefix=name)
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
@@ -60,7 +66,10 @@ def generate_init_params(options, params):
 def init_tparams(params):
     tparams = OrderedDict()
     for kk, pp in params.iteritems():
-        tparams[kk] = theano.shared(params[kk], name=kk)
+        if type(params[kk]) != tf.Variable:
+            tparams[kk] = tf.Variable(params[kk], name=kk, dtype='float32', trainable=True)
+        else:
+            tparams[kk] = params[kk]
     return tparams
 
 def ortho_weight(ndim):
@@ -75,6 +84,15 @@ def param_init_lstm(options, params, prefix='lstm', mult=1):
 
     :see: init_params
     """
+
+    W = numpy.random.normal(scale=0.01, size=[options['dim_proj']*2, options['dim_proj']])
+    b = numpy.random.normal(scale=0.01, size=options['dim_proj'])
+    #W = tf.random_normal([options['dim_proj'], options['dim_proj']*2])
+    #b = tf.random_normal([options['dim_proj']*2])
+    params[_p(prefix, 'W')] = W
+    params[_p(prefix, 'b')] = b
+
+    return params
 
     W = numpy.concatenate([ortho_weight(options['dim_proj']*mult),
                            ortho_weight(options['dim_proj']*mult),

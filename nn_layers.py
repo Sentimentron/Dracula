@@ -7,7 +7,9 @@ from theano import tensor
 from util import numpy_floatX
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 
-def embeddings_layer(x, Wemb, dim_proj):
+import tensorflow as tf
+
+def embeddings_layer(x, Wemb):
     """
     Returns the one-hot vector x after encoding in the Wemb embedding space.
     :param x: One-hot index vector (25, 23...)
@@ -15,13 +17,7 @@ def embeddings_layer(x, Wemb, dim_proj):
     :return:
     """
 
-    n_words = x.shape[0]
-    n_max_letters_in_word = x.shape[1]
-    n_batch = x.shape[2]
-
-    dist = Wemb[x.flatten()].reshape([n_words, n_max_letters_in_word, n_batch, dim_proj])
-    return dist
-
+    return tf.gather(Wemb, x)
 
 def lstm_mask_layer(proj, mask):
     """
@@ -32,65 +28,39 @@ def lstm_mask_layer(proj, mask):
     :return: The masked values
     """
 
-    return proj * mask[:, :, None]
+    return tf.matmul(proj, mask)
 
-def per_word_averaging_layer_distrib(proj, wmask, maxw):
+def per_word_averaging_layer(dist, dist_mask):
     """
-
-    """
-    print maxw, "MAXW"
-    dup = [tensor.shape_padaxis(proj, 0) for _ in range(maxw)]
-    dup = tensor.concatenate(dup, 0)
-    #dup = tensor.shape_padaxis(proj, 0)
-
-    mul = tensor.mul(wmask, dup)
-    mul = theano.printing.Print("mul", attrs=["shape"])(mul)
-#    mul = mul[mul.nonzero()]
-#    mul = mul[mul != 0]
-    compare = tensor.eq(mul, numpy_floatX(0.))
-    mul = mul[(1-compare).nonzero()[0]]
-    mul = theano.printing.Print("mul", attrs=["shape"])(mul)
-#    mul = theano.printing.Print("mul")(mul)
-    return mul
-
-def per_word_averaging_layer(proj, wmask, maxw, trim=False):
-    """
+    Average everything per-word.
     :param proj: Output of the LSTM layer
-    :param wmask: Unravelled 4D-index tensor (represented in 2d)
-    :return: The per-word averages.
+    :param wmask: The map of word -> character embeddings as a [word, character_index, tweet, all_ones_dim_proj] matrix
+    :param maxw: The maximum character-per-word offset
+    :param trim: Whether to trim undefined regions in the result
+    :return: The per-word averages
     """
-    n_chars = proj.shape[0]
-    n_samples = proj.shape[1]
-    n_proj = proj.shape[2]
 
-    dist = per_word_averaging_layer_distrib(proj, wmask, maxw)
+    dist = tf.mul(dist, dist_mask)
 
-    dist = dist.dimshuffle(1, 2, 0, 3)
+    # Transpose everything so it's the same as Theano
+    dist = tf.transpose(dist, [1, 2, 0, 3])
 
-    divider = tensor.cast(tensor.neq(dist, numpy_floatX(0.0)).sum(axis=0), theano.config.floatX)
-    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
+    dist_mask = tf.transpose(dist_mask, [1, 2, 0, 3])
 
-    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
-    tmp /= divider
+    divider = tf.reduce_sum(dist_mask, 0)
+    divider = tf.cast(divider, dtype='float32')
+    normalizer = tf.equal(divider, 0.0)
+    normalizer = tf.cast(normalizer, dtype='float32')
+    divider = tf.add(divider, normalizer)
 
-    # tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
+    tmp = tf.reduce_sum(dist, 0)
+    tmp = tf.div(tmp, divider)
 
-    #_max = dist.max(axis=0)
-    #_min = dist.min(axis=0)
+    return tf.transpose(tmp, [1, 0, 2])
 
-    #tmp = tensor.concatenate([tmp, _max, _min], axis=2)
-    #    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
-
-    if not trim:
-        return tmp
-    else:
-        ret = tensor.zeros_like(tmp)
-        ret = tensor.set_subtensor(ret[:, :-1], tmp[:, 1:])
-        return tensor.cast(ret, theano.config.floatX)
-
-def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
+def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False, scale=True):
     """
-    Produces the final labels via softmax
+    Unscaled logits output.
     :param avg_per_word: Output from word-averaging
     :param U: Classification weight matrix
     :param b: Classification bias layer
@@ -98,26 +68,55 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
                     where the output is undefined, causing this thing to output the special 0 label (for "don't care")
     :return: Softmax predictions
     """
-    #avg_per_word = theano.printing.Print("avg_per_word")(avg_per_word)
+    preds, raw_preds = None, None
+
+    def softmax(x):
+        e_x = tf.exp(x - tf.expand_dims(tf.reduce_max(x, 1), -1))
+        return e_x / tf.expand_dims(tf.reduce_sum(e_x, 1), -1)
+
+    def softmax_fn(current_input):
+        logits = tf.matmul(current_input, U) + b
+        if scale:
+            return tf.nn.softmax(logits)
+            #return softmax(logits)
+        return logits
+
+        #return softmax(tf.matmul(current_input, U) + b)
+
+    #avg_per_word = tf.Print(avg_per_word, [avg_per_word], message="avg")
     if training:
-        srng = RandomStreams(seed=12345)
-        dropout_mask = tensor.cast(srng.binomial(size=U.shape, p=0.5), theano.config.floatX)
-        #U = theano.printing.Print("U", attrs=["shape"])(U)
-        #dropout_mask = theano.printing.Print("dropout_mask", attrs=["shape"])(dropout_mask)
-        raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, tensor.mul(U, dropout_mask)) + b),
-                                  outputs_info=None,
-                                  sequences=[avg_per_word, tensor.arange(maxw)]
-                                  )
+        keep_prob = 0.50
+        dropout_mask = tf.nn.dropout(avg_per_word, keep_prob)
+        raw_preds = tf.map_fn(softmax_fn, dropout_mask)
     else:
-        raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.softmax(tensor.dot(p, U) + b),
-				  outputs_info=None,
-				  sequences=[avg_per_word, tensor.arange(maxw)]
-				  )
+        raw_preds = tf.map_fn(softmax_fn, avg_per_word)
 
-    #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
-    #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)
-    pred = tensor.zeros_like(raw_pred)
-    pred = tensor.inc_subtensor(pred[:, :, 0], 1)
-    pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
+    return raw_preds
 
-    return pred
+    if True:
+
+        #dupd_mask = tf.tile(y_mask, [1, 1, 46]) # TODO: don't hard-code ydim
+        expanded_y_mask = tf.expand_dims(y_mask, -1)
+        inverse_mask = 1 - expanded_y_mask # 1 in places where y_mask is zero
+        dupd_mask = tf.concat(2, [expanded_y_mask for _ in range(46)]) # TODO: don't hard-code ydim
+        new_mask = tf.concat(2, [inverse_mask, dupd_mask])
+
+        expanded_tiled_y_mask = tf.concat(2, [expanded_y_mask for _ in range(46)])
+
+        default_pred_1 = tf.ones_like(expanded_y_mask)
+        default_pred_0 = tf.zeros_like(expanded_y_mask)
+        default_pred_0 = tf.concat(2, [default_pred_0 for _ in range(45)])
+        default_pred = tf.concat(2, [default_pred_1, default_pred_0])
+
+        #expander = tf.zeros_like(raw_preds)
+        #expander[:, :, 0] = tf.ones(tf.shape(expander)[2])
+        #preds = tf.cond(tf.equal(y_mask, 0), new_mask, raw_preds)
+        preds = tf.select(tf.equal(expanded_tiled_y_mask, 0), default_pred, raw_preds)
+        #expander = tf.zeros_like(raw_preds)
+        #    mask = expander * y_mask
+        #return tf.mul(raw_preds, y_mask)
+
+        #return tf.mul(mask, raw_preds)
+        preds = tf.Print(preds, [preds], "preds=")
+        return preds
+
