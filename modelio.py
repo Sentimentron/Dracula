@@ -25,17 +25,6 @@ def build_character_dictionary(path, chars = {}):
                         chars[c] = len(chars) + 1
     return chars
 
-def build_word_dictionary(path, words = {}):
-    with open(path, 'r') as fin:
-        for line in fin:
-            line = line.strip()
-            if len(line) == 0:
-                continue
-            word, _ = line.split('\t')
-            if word not in words:
-                words[word] = len(words) + 1
-    return words
-
 def build_tag_dictionary(path, tags={}):
     with open(path, 'r') as fin:
         for line in fin:
@@ -90,11 +79,10 @@ def get_max_length(path):
     logging.debug('get_max_length(%s) = %d', path, m)
     return m
 
-def load_pos_tagged_data(path, chardict = {}, worddict={}, posdict={}, overlap=15, allow_append=True):
+def load_pos_tagged_data(path, chardict = {}, posdict={}, overlap=15, allow_append=True):
 
     if allow_append:
         build_character_dictionary(path, chardict)
-        build_word_dictionary(path, worddict)
         build_tag_dictionary(path, posdict)
 
     cur_chars, cur_words, cur_labels = [], [], []
