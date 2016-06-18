@@ -14,7 +14,7 @@ from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from theano.tensor.shared_randomstreams import RandomStreams
 
 from util import get_minibatches_idx
-from modelio import load_pos_tagged_data, prepare_data, get_max_word_count, get_max_length, get_max_word_length
+from modelio import *
 
 from nn_layers import *
 from nn_lstm import lstm_layer, lstm_unmasked_layer, bidirectional_lstm_layer
@@ -69,7 +69,8 @@ def build_model(tparams, options, maxw, training=True):
         name = 'lstm_words_%d' % (i + 1,)
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
-    pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
+    tmp = proj2.mean(axis=0, keepdims=True)
+    pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
     #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
     f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
@@ -85,23 +86,21 @@ def build_model(tparams, options, maxw, training=True):
     return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
-    src_chars, src_words, src_labels = [], [], []
-    val_chars, val_words, val_labels = [], [], []
+    src_chars, src_labels = [], []
+    val_chars, val_labels = [], []
     fin = max(int(prop * len(src[0])), 1)
     print len(src[0]), prop, fin
-    for i, ((c, w), l) in enumerate(zip(zip(src[0], src[1]), src[2])):
+    for i, (c, l) in enumerate(zip(src[0], src[1])):
         if i < fin:
             val_chars.append(c)
-            val_words.append(w)
             val_labels.append(l)
         else:
             src_chars.append(c)
-            src_words.append(w)
             src_labels.append(l)
-    return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
+    return (src_chars, src_labels), (val_chars, val_labels)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=128,  # character embedding dimension and LSTM number of hidden units.
     patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -126,7 +125,6 @@ def train_lstm(
     pretrain = False, # If True, load some data from this argument
     # Use to keep track of feature enumeration
     char_dict = {},
-    word_dict = {},
     pos_dict = {},
     word_layers=0,
     letter_layers=0
@@ -139,24 +137,20 @@ def train_lstm(
     if reload_model is not None:
         load_params(reload_model, model_options)
         char_dict = model_options['char_dict']
-        word_dict = model_options['word_dict']
         pos_dict = model_options['pos_dict']
 
     # Load the training data
     print 'Loading data'
 
-    input_path = "Data/Gate-Train.conll"
+    input_path = "Data/training_data.txt"
 
-    load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict)
-
-    with open("substitutions.pkl", "rb") as fin:
-        word_dict = pickle.load(fin)
+    load_data(input_path, char_dict)
 
     max_word_count = 0
     max_word_length = 0
     max_length = 0
     # Now load the data for real
-    data = load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict, 0)
+    data = load_data(input_path, char_dict)
     train, eval = split_at(data, 0.05)
     test, valid = split_at(eval, 0.50)
     max_word_count = max(max_word_count, \
@@ -167,14 +161,13 @@ def train_lstm(
 
     #ydim = numpy.max(numpy.max(train[2])) + 1
     #print numpy.max(train[2])
-    ydim = max(itertools.chain.from_iterable(train[2])) + 1
+#    ydim = max(itertools.chain.from_iterable(train[2])) + 1
+    ydim = 2
     print "ydim =", ydim
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
-    model_options['n_words'] = len(word_dict)+1
 
-    model_options['word_dict'] = word_dict
     model_options['char_dict'] = char_dict
     model_options['pos_dict'] = pos_dict
 
@@ -244,9 +237,8 @@ def train_lstm(
                 uidx += 1
 
                 # Select the random examples for this minibatch
-                y = [train[2][t] for t in train_index]
+                y = [train[1][t] for t in train_index]
                 x_c = [train[0][t] for t in train_index]
-                x_w = [train[1][t] for t in train_index]
 
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
