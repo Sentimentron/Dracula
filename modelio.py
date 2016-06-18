@@ -11,22 +11,18 @@ import sys
 import tempfile
 
 from collections import defaultdict
+import csv
+
 
 def build_character_dictionary(path, chars = {}):
     with open(path, 'r') as fin:
-        lineno = 0
-        for line in fin:
-            lineno += 1
-            line = line.strip()
-            if len(line) == 0:
-                continue
-            try:
-                word, _ = line.split('\t')
+        filereader = csv.reader(fin)
+        for text, polarity in filereader:
+            text = text.split()
+            for word in text:
                 for c in word:
                     if c not in chars:
                         chars[c] = len(chars) + 1
-            except ValueError as ex:
-                print ex, lineno, line
     return chars
 
 def build_word_dictionary(path, words = {}):
