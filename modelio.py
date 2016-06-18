@@ -64,140 +64,61 @@ def get_max_length(path):
     logging.debug('get_max_length(%s) = %d', path, m)
     return m
 
-def load_pos_tagged_data(path, chardict = {}, overlap=15, allow_append=True):
+def load_data(path, chardict = {}, allow_append=True):
 
     if allow_append:
         build_character_dictionary(path, chardict)
 
-    cur_chars, cur_words, cur_labels = [], [], []
-    words, chars, labels = [], [], []
+    cur_chars = []
+    chars, labels = [], []
     with open(path, 'r') as fin:
-        for line in fin:
-            line = line.strip()
-            if len(line) == 0:
-                chars.append(cur_chars[:-1])
-                words.append(cur_words[:-1])
-                labels.append(cur_labels)
+        filereader = csv.reader(fin)
+        for text, polarity in filereader:
+            buf = []
+            text = text.split()
+            for i, word in enumerate(text):
                 cur_chars = []
-                cur_labels = []
-                cur_words = []
-                continue
-
-            word, pos = line.split('\t')
-
-            if word not in worddict and allow_append:
-                worddict[word] = len(worddict)+1
-
-            for c in word:
-                if c not in chardict and allow_append:
-                    chardict[c] = len(chardict)+1
-
-                if c in chardict:
-                    cur_chars.append(chardict[c])
-                else:
-                    cur_chars.append(0)
-
-                if word in worddict:
-                    cur_words.append(worddict[word])
-                else:
-                    cur_words.append(0)
-
-                if pos not in posdict and allow_append:
-                    posdict[pos] = len(posdict)+1
-
-            if pos in posdict:
-                cur_labels.append(posdict[pos])
-            else:
-                cur_labels.append(0)
-
-            if word in worddict:
-                cur_words.append(worddict[word])
-            else:
-                cur_words.append(0)
-            cur_chars.append(0)
-
-    if len(cur_chars) > 0:
-    	chars.append(cur_chars)
-        words.append(cur_words)
-    	labels.append(cur_labels)
-
-    return chars, words, labels
-
-def string_to_unprepared_format(text, chardict, worddict):
-
-    with open('sample.conll', 'wb') as fp:
-        for word in text.split():
-            #if word not in worddict:
-            #    raise Exception((word, "not in dictionary"))
-            line = '%s\t?\n' % (word,)
-            fp.write(line)
-            #           print >> fp, "%s\t?" % (word,)
-
-    chars, words, labels = load_pos_tagged_data("sample.conll", chardict, worddict, {'?': 0}, False)
-    return [], chars, words, labels
+                for j, c in enumerate(word):
+                    cidx = chardict[c] if c in chardict else 0
+                    cur_chars.append(cidx)
+                buf.append(cur_chars)
+            chars.append(buf)
+            labels.append(int(float(polarity)))
+    return chars, labels
 
 def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
-    """
-    Create the matrices from the datasets.
-
-    This pad each sequence to the same length: the length of the
-    longest sequence or maxlen.
-
-    if maxlen is set, we will cut all sequences to this maximum
-    length
-
-    This swap the axis!
-    """
 
     # x: a list of sentences
     n_samples = len(char_seqs)
 
     x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
     x_mask = numpy.zeros((maxw, maxwlen, n_samples, dim_proj)).astype(theano.config.floatX)
-    y = numpy.zeros((maxw, n_samples)).astype('int8')
-    y_mask = numpy.zeros((maxw, n_samples)).astype('int8')
+    y = numpy.zeros((1, n_samples)).astype('int8')
+    y_mask = numpy.zeros((1, n_samples)).astype('int8')
 
     for idx, (s_c, l) in enumerate(zip(char_seqs, labels)):
         # idx is the current position in the mini-batch
-        # s_c is a list of characters
-        # s_w is a list of words
-        # l is a list of labels
-        c = 0
-        p = 0
+        # s_c is a 2D list of characters
+        # l is the current label
+
+        # Set the y-label
+        y[0, idx] = 1 if l == 1 else 0
+        y_mask[0, idx] = 1
+
         warning = None
-        for j, a in enumerate(s_c):
-            # j is the current character in this tweet
+
+        for c, warr in enumerate(s_c):
             # idx is the current tweet in this minibatch
-            # c is the current word (can be up to 16)
-            # p is the current character in this word
-
-            if a == 0:
-                # This current character is a space
-                # Increase the word count and continue
-                c += 1
-                p = 0
-                j += 1 # Temporarily skip to next loop char
-                if c >= maxw:
-                    if j != len(s_c):
-                        warning = "truncation: too many words in this tweet! {}-{}".format(j, len(s_c))
+            # c is the current word
+            if c >= maxw:
+                warning = "truncation: too many words in this tweet!"
+                break
+            for p, carr in enumerate(warr): # huh! good God!
+                # p is the current character in this word
+                if p >= maxwlen:
+                    warning = "truncation too many chars in this word!"
                     break
-                if c >= len(l):
-                    if j != len(s_c):
-                        warning = "truncation: too many words for these labels {}-{}".format(j, len(s_c))
-                    break
-
-            if p >= x_c.shape[1]:
-                warning = "truncation: too many characters for this maxwlen"
-            else:
-                x_c[c, p, idx] = a
+                x_c[c, p, idx] = carr
                 x_mask[c, p, idx] = numpy.ones(dim_proj)
-
-            y[c, idx] = l[c]
-            y_mask[c, idx] = 1
-            p += 1
-
-        if warning is not None:
-            #logging.warning("%s", warning)
-            pass
 
     return x_c, x_mask, y, y_mask

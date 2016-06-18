@@ -1,4 +1,0 @@
-"some quoted string is negative",-1.0
-"some \"double quoted\" strings are also negative",-1.0
-non-quoted tweets are neutral,0
-final line tweets are positivez,1.0
