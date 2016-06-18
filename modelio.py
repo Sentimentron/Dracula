@@ -25,29 +25,14 @@ def build_character_dictionary(path, chars = {}):
                         chars[c] = len(chars) + 1
     return chars
 
-def build_tag_dictionary(path, tags={}):
-    with open(path, 'r') as fin:
-        for line in fin:
-            line = line.strip()
-            if len(line) == 0:
-                continue
-            _, tag = line.split('\t')
-            if tag not in tags:
-                tags[tag] = len(tags) + 1
-    return tags
-
 def get_tweet_words(path):
     t = defaultdict(list)
-    c = 0
     with open(path, 'r') as fin:
-        for line in fin:
-            line = line.strip()
-            if len(line) == 0:
-                c += 1
-                continue
-            word, pos = line.split('\t')
-            word = word.decode('utf8')
-            t[c].append(word)
+        filereader = csv.reader(fin)
+        for c, (text, _) in enumerate(filereader):
+            text = text.split()
+            for word in text:
+                t[c].append(word)
     return t
 
 def get_max_word_count(path):
@@ -79,11 +64,10 @@ def get_max_length(path):
     logging.debug('get_max_length(%s) = %d', path, m)
     return m
 
-def load_pos_tagged_data(path, chardict = {}, posdict={}, overlap=15, allow_append=True):
+def load_pos_tagged_data(path, chardict = {}, overlap=15, allow_append=True):
 
     if allow_append:
         build_character_dictionary(path, chardict)
-        build_tag_dictionary(path, posdict)
 
     cur_chars, cur_words, cur_labels = [], [], []
     words, chars, labels = [], [], []
