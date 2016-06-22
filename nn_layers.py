@@ -99,7 +99,7 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     :return: Softmax predictions
     """
     #avg_per_word = theano.printing.Print("avg_per_word")(avg_per_word)
-    if training:
+    if False:
         srng = RandomStreams(seed=12345)
         dropout_mask = tensor.cast(srng.binomial(size=U.shape, p=0.5), theano.config.floatX)
         #U = theano.printing.Print("U", attrs=["shape"])(U)

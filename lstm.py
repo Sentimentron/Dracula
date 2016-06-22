@@ -100,8 +100,8 @@ def split_at(src, prop):
     return (src_chars, src_labels), (val_chars, val_labels)
 
 def train_lstm(
-    dim_proj_chars=128,  # character embedding dimension and LSTM number of hidden units.
-    patience=4,  # Number of epoch to wait before early stop if no progress
+    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    patience=40,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
     decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
@@ -112,7 +112,7 @@ def train_lstm(
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=50,  # The batch size during training.
+    batch_size=100,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 
