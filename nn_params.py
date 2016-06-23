@@ -27,11 +27,18 @@ def init_params(options, reloaded=False):
 
     nparams = generate_init_params(options, params)
 
+    regen_last_layer = False
+    nparams_wlayers = set([x for x in nparams if "lstm_words_" in x])
+    options_wlayers = set([x for x in options if "lstm_words_" in x])
+    regen_last_layer = options_wlayers != nparams_wlayers
+
     if not reloaded:
         return nparams
     else:
         for k in nparams:
             if k in options:
+                if k in ["U", "b"] and regen_last_layer:
+                    continue
                 nparams[k] = options[k]
         logging.debug("%s %s", options.keys(), nparams.keys())
         return nparams
