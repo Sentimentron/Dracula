@@ -86,6 +86,22 @@ def load_data(path, chardict = {}, allow_append=True):
             labels.append(int(float(polarity)))
     return chars, labels
 
+
+def string_to_unprepared_format(text, chardict):
+
+    chars, labels, buf = [], [], []
+    text = text.split()
+    for i, word in enumerate(text):
+        cur_chars = []
+        for j, c in enumerate(word):
+            cidx = chardict[c] if c in chardict else 0
+            cur_chars.append(cidx)
+        buf.append(cur_chars)
+    chars.append(buf)
+    labels.append(0)
+    return chars, labels
+
+
 def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
 
     # x: a list of sentences
@@ -102,7 +118,7 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
         # l is the current label
 
         # Set the y-label
-        y[0, idx] = 1 if l == 1 else 0
+        y[0, idx] = l + 1 # 2 = positive, 1 = neutral, 0 = negative
         y_mask[0, idx] = 1
 
         warning = None
