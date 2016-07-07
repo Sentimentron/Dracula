@@ -100,7 +100,7 @@ def split_at(src, prop):
     return (src_chars, src_labels), (val_chars, val_labels)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=64,  # character embedding dimension and LSTM number of hidden units.
     patience=40,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -162,7 +162,7 @@ def train_lstm(
     #ydim = numpy.max(numpy.max(train[2])) + 1
     #print numpy.max(train[2])
 #    ydim = max(itertools.chain.from_iterable(train[2])) + 1
-    ydim = 2
+    ydim = 3
     print "ydim =", ydim
 
     model_options['ydim'] = ydim

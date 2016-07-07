@@ -13,9 +13,9 @@ app = Flask(__name__)
 from collections import defaultdict, Counter
 
 model = None
-max_word_count = 47#13 #get_max_word_count("Data/Gate.conll") + 12
-max_word_length = get_max_word_length("Data/Gate.conll")
-max_length = get_max_length("Data/Gate.conll")
+max_word_count = get_max_word_count("Data/training_data.txt")
+max_word_length = get_max_word_length("Data/training_data.txt")
+max_length = get_max_length("Data/training_data.txt")
 
 def get_lstm(
     patience=10,  # Number of epoch to wait before early stop if no progress
@@ -39,8 +39,8 @@ def get_lstm(
     char_dict = {},
     word_dict = {},
     pos_dict = {},
-    letter_layers=2,
-    word_layers=3
+    letter_layers=1,
+    word_layers=4
 ):
 
     # Model options
@@ -55,7 +55,7 @@ def get_lstm(
         word_dict[w.decode('utf8')] = word_dict[w]
     pos_dict = model_options['pos_dict']
     print "Continuing with model..."
-    ydim = 27 # Hard-code, one that appears in the testing set, not in the training set
+    ydim = 3 # Hard-code, one that appears in the testing set, not in the training set
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
@@ -114,52 +114,26 @@ def hello():
     for text in find_ngrams(full_text, max_word_count):
       text = " ".join(text)
       #print text
-      errors, chars, words, labels = string_to_unprepared_format(text, model[-1]['char_dict'], model[-1]['word_dict'])
-      if len(errors) > 0:
-          response["tokenization_errors"] = errors
+      chars, labels = string_to_unprepared_format(text, model[-1]['char_dict'])
 
       # TODO: 32 is the n_proj
       xc, mask, y, y_mask = prepare_data(chars, labels, max_word_count, \
-      max_word_length, 32)
+      max_word_length, 64)
 
-      pred = model[-3](xc, mask, y_mask)
-      probs = model[-4](xc, mask, y_mask)
+      pred = model[5](xc, mask, y_mask)
+      probs = model[4](xc, mask, y_mask)
       #print pred, xc
-      windows.append((pred, probs))
+      print pred, probs
+      windows.append((pred[0, 0], probs))
 
     tag_counter = defaultdict(lambda : defaultdict(float))
 
     # Scan along each n-word window,
     # build up a list of the most popular tags
-    for winidx, (pred, probs) in enumerate(windows):
-        for idx, i in enumerate(pred[:, 0]):
-            wordidx = winidx + idx
-            if i == 0:
-                continue
-            for j, p in enumerate(probs[idx, 0, :]):
-                tag_counter[wordidx][j] += p
+    max_target_c = Counter([x for x, _ in windows])
+    max_label, _ = max_target_c.most_common()[0]
 
-    # Set up the response
-    response['tags'] = []
-    response['full_info'] = []
-
-    text = text.split(' ')
-    for idx in sorted(tag_counter):
-        if len(tag_counter[idx]) == 0:
-            break
-        max_tag = 0
-        max_prob = 0
-        for t in tag_counter[idx]:
-            p = tag_counter[idx][t]
-            if t != 0:
-                if full_text[idx] == "sunday":
-                    print model[-1]['inv_pos_dict'][t], p, full_text[idx]
-            if p > max_prob:
-                max_prob = p
-                max_tag = t
-        tag = model[-1]['inv_pos_dict'][max_tag]
-        response['tags'].append(tag)
-        response['full_info'].append((tag, max_prob, full_text[idx]))
+    response['label'] = max_label
 
     return jsonify(**response)
 
