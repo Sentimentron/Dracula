@@ -55,10 +55,10 @@ def generate_init_params(options, params):
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
-        params = param_init_bidirection_lstm(options, params, prefix=name)
+        params = param_init_bidirection_lstm(options, params, prefix=name, mult=3)
 
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj'],
+    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*3,
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
