@@ -63,11 +63,15 @@ def build_model(tparams, options, maxw, training=True):
     dist = dist * dist_mask
     tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
     tmp /= divider
+
+    _max = dist.max(axis=0)
+    _min = dist.min(axis=0)
+    tmp = tensor.concatenate([tmp, _max, _min], axis=2)
     proj2 = tmp.dimshuffle(1, 0, 2)
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
-        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
+        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name, None, 3)
 
     tmp = proj2.mean(axis=0, keepdims=True)
     pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
@@ -100,7 +104,7 @@ def split_at(src, prop):
     return (src_chars, src_labels), (val_chars, val_labels)
 
 def train_lstm(
-    dim_proj_chars=64,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
     patience=40,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates

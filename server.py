@@ -40,7 +40,7 @@ def get_lstm(
     word_dict = {},
     pos_dict = {},
     letter_layers=1,
-    word_layers=4
+    word_layers=3
 ):
 
     # Model options
@@ -118,7 +118,7 @@ def hello():
 
       # TODO: 32 is the n_proj
       xc, mask, y, y_mask = prepare_data(chars, labels, max_word_count, \
-      max_word_length, 64)
+      max_word_length, 32)
 
       pred = model[5](xc, mask, y_mask)
       probs = model[4](xc, mask, y_mask)
