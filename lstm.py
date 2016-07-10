@@ -74,7 +74,29 @@ def build_model(tparams, options, maxw, training=True):
         name = 'lstm_words_%d' % (i + 1,)
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name, None, 3)
 
+    # dist structure is (character in word, mini-batch idx, word, all ones)
+    # dist structure is (word, character in word, mini-batch idx, all ones)
+    dist = dist.dimshuffle(2, 1, 0, 3)
+#    word_mask = dist.max(axis=3, keepdims=True)
+    # now looking at (word, character in word, min-batch idx, [1])
+#    word_sum = proj2.sum(axis=0, keepdims=True)
+
+    word_mask = dist.max(axis=[3])
+    word_mask = word_mask.max(axis=[2], keepdims=True)
+
+    proj2 = proj2 * word_mask
+
+    # char mask is (word, character in word, min batch idx, 1)
+    # word_mask is (word, character in word, mini batch idx)
+    #word_mask = char_mask.max(axis=1, keepdims=True)
+    # word mask is (word, mini batch idx)
+    #
+    # should be (1, mini batch idx, 1
+    #word_char_count = dist.sum(axis=0)
+
+    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
     tmp = proj2.mean(axis=0, keepdims=True)
+    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
     pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
     #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
@@ -109,7 +131,7 @@ def split_at(src, prop):
     return (src_chars, src_labels), (val_chars, val_labels)
 
 def train_lstm(
-    dim_proj_chars=128,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
     patience=40,  # Number of epoch to wait before early stop if no progress
     max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -121,7 +143,7 @@ def train_lstm(
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=100,  # The batch size during training.
+    batch_size=20,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 
