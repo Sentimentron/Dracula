@@ -4,6 +4,7 @@
 
 """
 
+import io
 import numpy
 import theano
 import logging
@@ -15,7 +16,7 @@ import csv
 
 
 def build_character_dictionary(path, chars = {}):
-    with open(path, 'r') as fin:
+    with io.open(path, mode='r', encoding='utf8') as fin:
         filereader = csv.reader(fin)
         for text, polarity in filereader:
             text = text.split()
@@ -27,7 +28,7 @@ def build_character_dictionary(path, chars = {}):
 
 def get_tweet_words(path):
     t = defaultdict(list)
-    with open(path, 'r') as fin:
+    with io.open(path, mode='r', encoding='utf8') as fin:
         filereader = csv.reader(fin)
         for c, (text, _) in enumerate(filereader):
             text = text.split()

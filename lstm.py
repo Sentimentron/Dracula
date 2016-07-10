@@ -25,6 +25,7 @@ from nn_serialization import zipp, unzip, load_params
 
 import os.path
 import pickle
+import random
 
 # Set the random number generators' seeds for consistency
 SEED = 123
@@ -90,11 +91,15 @@ def build_model(tparams, options, maxw, training=True):
     return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
+    valid_indices = [i for i, _ in enumerate(zip(src[0], src[1]))]
+    random.shuffle(valid_indices)
     src_chars, src_labels = [], []
     val_chars, val_labels = [], []
     fin = max(int(prop * len(src[0])), 1)
     print len(src[0]), prop, fin
-    for i, (c, l) in enumerate(zip(src[0], src[1])):
+    for i, idx in enumerate(valid_indices):
+        c = src[0][idx]
+        l = src[1][idx]
         if i < fin:
             val_chars.append(c)
             val_labels.append(l)
@@ -104,9 +109,9 @@ def split_at(src, prop):
     return (src_chars, src_labels), (val_chars, val_labels)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=128,  # character embedding dimension and LSTM number of hidden units.
     patience=40,  # Number of epoch to wait before early stop if no progress
-    max_epochs=5000,  # The maximum number of epoch to run
+    max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
     decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
     lrate=0.0001,  # Learning rate for sgd (not used for adadelta and rmsprop)
