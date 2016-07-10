@@ -284,7 +284,6 @@ def tokenize(text):
 # Twitter text comes HTML-escaped, so unescape it.
 # We also first unescape &amp;'s, in case the text has been buggily double-escaped.
 def normalizeTextForTagger(text):
-    text = text.decode('utf8')
     text = text.replace("&amp;", "&")
     text = HTMLParser.HTMLParser().unescape(text)
     return text
