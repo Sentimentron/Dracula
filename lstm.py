@@ -81,10 +81,10 @@ def build_model(tparams, options, maxw, training=True):
     # now looking at (word, character in word, min-batch idx, [1])
 #    word_sum = proj2.sum(axis=0, keepdims=True)
 
-    word_mask = dist.max(axis=[3])
-    word_mask = word_mask.max(axis=[2], keepdims=True)
+    word_mask_1 = dist.max(axis=[3])
+    word_mask_2 = word_mask_1.max(axis=[2], keepdims=True)
 
-    proj2 = proj2 * word_mask
+    proj2 = proj2 * word_mask_2
 
     # char mask is (word, character in word, min batch idx, 1)
     # word_mask is (word, character in word, mini batch idx)
@@ -94,9 +94,13 @@ def build_model(tparams, options, maxw, training=True):
     # should be (1, mini batch idx, 1
     #word_char_count = dist.sum(axis=0)
 
-    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
-    tmp = proj2.mean(axis=0, keepdims=True)
-    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
+#    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
+    tmp = proj2.sum(axis=0, keepdims=True)
+    divider = word_mask_1.sum(axis=[2], keepdims=True)
+    divider += tensor.eq(divider, numpy_floatX(0.0))
+    tmp = tmp / divider
+
+ #   tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
     pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
     #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
