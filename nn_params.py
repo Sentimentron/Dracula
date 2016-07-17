@@ -62,6 +62,10 @@ def generate_init_params(options, params):
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
+    # freq shim
+    params['Ufreq'] = numpy.random.randn(options['dim_proj']*3, 1).astype(config.floatX)
+    params['bfreq'] = numpy.zeros((1,)).astype(config.floatX)
+
     return params
 
 def init_tparams(params):

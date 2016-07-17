@@ -8,31 +8,6 @@
 import numpy
 import theano
 
-
-def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False, maxlen=140):
-    """
-    If you want to use a trained model, this is useful to compute
-    the probabilities of new examples.
-    """
-    n_samples = len(data[0])
-    probs = numpy.zeros((n_samples, 2)).astype(theano.config.floatX)
-
-    n_done = 0
-
-    for _, valid_index in iterator:
-        x, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
-                                                 numpy.array(data[1])[valid_index],
-                                                 maxlen=maxlen)
-        prediction_probs = f_pred_prob(x, mask, wmask, y_mask)
-        probs[valid_index, :] = prediction_probs
-
-        n_done += len(valid_index)
-        if verbose:
-            print '%d/%d samples classified' % (n_done, n_samples)
-
-    return probs
-
-
 def pred_error(f_pred, prepare_data, data, iterator, maxw, max_word_length, dim_proj):
     """
     Just compute the error
@@ -42,7 +17,8 @@ def pred_error(f_pred, prepare_data, data, iterator, maxw, max_word_length, dim_
     valid_err = []
     valid_shapes = []
     for _, valid_index in iterator:
-        xc, mask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
+        xc, f, mask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
+                                                 numpy.array(data[2])[valid_index],
                                                  numpy.array(data[1])[valid_index],
                                                  maxw, max_word_length, dim_proj)
         preds = f_pred(xc, mask, y_mask)

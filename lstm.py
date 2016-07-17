@@ -33,6 +33,7 @@ numpy.random.seed(SEED)
 
 def build_model(tparams, options, maxw, training=True):
     xc = tensor.tensor3('xc', dtype='int8')
+    fw = tensor.matrix('wf', dtype='int32')
     mask = tensor.tensor4('mask', dtype=config.floatX)
     y = tensor.matrix('y', dtype='int8')
     y_mask = tensor.matrix('y_mask', dtype='int8')
@@ -102,6 +103,7 @@ def build_model(tparams, options, maxw, training=True):
 
  #   tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
     pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
+    freqpred = softmax_layer(proj2, tparams['Ufreq'], tparams['bfreq'], y_mask, maxw, training)
     #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
     f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
@@ -110,32 +112,39 @@ def build_model(tparams, options, maxw, training=True):
     def cost_scan_i(i, j, free_var):
         return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
 
+    def cost_scan_f(i, j, free_var):
+        return (i.T - j) * (i.T - j)
+
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
+    cost_freq, _ = theano.scan(cost_scan_f, outputs_info=None, sequences=[freqpred, fw, tensor.arange(n_batch)])
 
-    cost = cost.mean()
+    cost = 0.9999 * cost.mean() + 0.0001 * cost_freq.mean()
 
-    return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
+    return xc, fw, mask, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
     valid_indices = [i for i, _ in enumerate(zip(src[0], src[1]))]
     random.shuffle(valid_indices)
-    src_chars, src_labels = [], []
-    val_chars, val_labels = [], []
+    src_chars, src_labels, src_freqs = [], [], []
+    val_chars, val_labels, val_freqs = [], [], []
     fin = max(int(prop * len(src[0])), 1)
     print len(src[0]), prop, fin
     for i, idx in enumerate(valid_indices):
         c = src[0][idx]
         l = src[1][idx]
+        f = src[2][idx]
         if i < fin:
             val_chars.append(c)
             val_labels.append(l)
+            val_freqs.append(f)
         else:
             src_chars.append(c)
             src_labels.append(l)
-    return (src_chars, src_labels), (val_chars, val_labels)
+            src_freqs.append(f)
+    return (src_chars, src_labels, src_freqs), (val_chars, val_labels, val_freqs)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=256,  # character embedding dimension and LSTM number of hidden units.
     patience=40,  # Number of epoch to wait before early stop if no progress
     max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -177,15 +186,18 @@ def train_lstm(
     # Load the training data
     print 'Loading data'
 
-    input_path = "Data/training_data.txt"
+    if word_layers + letter_layers == 0:
+        input_path = "Data/training_data_sample.txt"
+    else:
+        input_path = "Data/training_data.txt"
 
-    load_data(input_path, char_dict)
+    load_data(input_path, char_dict, True)
 
     max_word_count = 0
     max_word_length = 0
     max_length = 0
     # Now load the data for real
-    data = load_data(input_path, char_dict)
+    data = load_data(input_path, char_dict, True)
     train, eval = split_at(data, 0.05)
     test, valid = split_at(eval, 0.50)
     max_word_count = max(max_word_count, \
@@ -218,7 +230,7 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (xc, mask,
+    (xc, fw, mask,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
 
     if decay_c > 0.:
@@ -228,14 +240,14 @@ def train_lstm(
         weight_decay *= decay_c
         cost += weight_decay
 
-    f_cost = theano.function([xc, mask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([xc, fw, mask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([xc, mask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([xc, fw, mask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        xc, mask, y, y_mask, cost)
+                                        xc, fw, mask, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -272,6 +284,7 @@ def train_lstm(
                 uidx += 1
 
                 # Select the random examples for this minibatch
+                f = [train[2][t] for t in train_index]
                 y = [train[1][t] for t in train_index]
                 x_c = [train[0][t] for t in train_index]
 
@@ -280,13 +293,13 @@ def train_lstm(
                 # Return something of shape (minibatch maxlen, n samples)
                 n_proj = dim_proj_chars# + dim_proj_words
                 #def prepare_data(char_seqs, labels, maxw, maxwlen):
-                xc, mask, y, y_mask = prepare_data(x_c, y,
+                xc, fw, mask, y, y_mask = prepare_data(x_c, f, y,
                                                    max_word_count,
                                                    max_word_length,
                                                    dim_proj_chars)
                 n_samples += xc.shape[1]
 
-                cost = f_grad_shared(xc, mask, y, y_mask)
+                cost = f_grad_shared(xc, fw, mask, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
