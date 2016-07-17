@@ -66,13 +66,20 @@ def get_max_length(path):
     return m
 
 def build_freq_dict(path):
-    ret = Counter()
+    c = Counter()
     with open(path, 'r') as fin:
         filereader = csv.reader(fin)
         for text, polarity in filereader:
             text = text.split()
             for i, word in enumerate(text):
-                ret.update([word])
+                c.update([word])
+
+    ret = defaultdict(float)
+    total = 0.0
+    for i, f in c.most_common():
+        total += f
+    for i, f in c.most_common():
+        ret[i] = int(-numpy.log2(f/total))
     return ret
 
 def load_data(path, chardict = {}, training=False):
@@ -132,7 +139,8 @@ def prepare_data(char_seqs, freqs, labels, maxw, maxwlen, dim_proj):
     n_samples = len(char_seqs)
 
     x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
-    f = numpy.zeros((maxw, n_samples)).astype('int32')
+    # Note: uses 1s to make sure that we don't get a NaN cost
+    f = numpy.ones((maxw, n_samples)).astype('int32')
     x_mask = numpy.zeros((maxw, maxwlen, n_samples, dim_proj)).astype(theano.config.floatX)
     y = numpy.zeros((1, n_samples)).astype('int8')
     y_mask = numpy.zeros((1, n_samples)).astype('int8')

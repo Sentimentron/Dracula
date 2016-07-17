@@ -113,12 +113,12 @@ def build_model(tparams, options, maxw, training=True):
         return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
 
     def cost_scan_f(i, j, free_var):
-        return (i.T - j) * (i.T - j)
+        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
     cost_freq, _ = theano.scan(cost_scan_f, outputs_info=None, sequences=[freqpred, fw, tensor.arange(n_batch)])
 
-    cost = 0.9999 * cost.mean() + 0.0001 * cost_freq.mean()
+    cost = cost.mean() + cost_freq.mean() / options['freq_dim']
 
     return xc, fw, mask, y, y_mask, f_pred_prob, f_pred, cost
 
@@ -210,9 +210,12 @@ def train_lstm(
     #print numpy.max(train[2])
 #    ydim = max(itertools.chain.from_iterable(train[2])) + 1
     ydim = 3
+    freq_dim = max(itertools.chain.from_iterable(train[2])) + 1
     print "ydim =", ydim
+    print "freq_dim =", freq_dim
 
     model_options['ydim'] = ydim
+    model_options['freq_dim'] = freq_dim
     model_options['n_chars'] = len(char_dict)+1
 
     model_options['char_dict'] = char_dict
