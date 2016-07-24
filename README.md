@@ -33,6 +33,9 @@ Make the following modifications:
 * <code>server.py</code>, in the <code>prepare_data</code> call on line 122, change <code>32</code> (the last argument) to the correct size.
 * <code>lstm.py</code>, in the <code>train_lstm</code> arguments on line 104, change <code>dim_proj_chars</code> default value to the correct size.
 
+## Licensing
+All the code in this repository is distributed under the terms of `LICENSE.md`.
+
 ## Acknowledgements, references
 The code in <code>lstm.py</code> is a heavily modified version of [Pierre Luc Carrier and Kyunghyun Cho's _LSTM Networks for Sentiment Analysis_ tutorial](http://deeplearning.net/tutorial/lstm.html). 
 
