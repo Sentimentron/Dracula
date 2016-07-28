@@ -94,18 +94,12 @@ def build_model(tparams, options, maxw, training=True):
     # should be (1, mini batch idx, 1
     #word_char_count = dist.sum(axis=0)
 
-    if options['use_relevance_layer']:
-        proj_relevance = sigmoid_layer(proj2, tparams['Urel'], tparams['brel'], \
-        y_mask, maxw)
-        proj2 = proj_relevance * proj2
-        #proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
-    else:
-        proj_relevance = sigmoid_layer(proj2, tparams['Urel'], tparams['brel'], \
-        y_mask, maxw)
-        proj2 = tensor.ones_like(proj_relevance) * proj2
+    proj_relevance = sigmoid_layer(proj2, tparams['Urel'], tparams['brel'], y_mask, maxw)
 
+    if not options['use_relevance_layer']:
+        proj_relevance = tensor.ones_like(proj_relevance)
 
-    tmp = proj2.sum(axis=0, keepdims=True)
+    tmp = proj2.sum(axis=0, keepdims=True) * proj_relevance
     divider = word_mask_1.sum(axis=[2], keepdims=True)
     divider += tensor.eq(divider, numpy_floatX(0.0))
     tmp = tmp / divider
