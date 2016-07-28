@@ -94,7 +94,17 @@ def build_model(tparams, options, maxw, training=True):
     # should be (1, mini batch idx, 1
     #word_char_count = dist.sum(axis=0)
 
-#    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
+    if options['use_relevance_layer']:
+        proj_relevance = sigmoid_layer(proj2, tparams['Urel'], tparams['brel'], \
+        y_mask, maxw)
+        proj2 = proj_relevance * proj2
+        #proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
+    else:
+        proj_relevance = sigmoid_layer(proj2, tparams['Urel'], tparams['brel'], \
+        y_mask, maxw)
+        proj2 = tensor.ones_like(proj_relevance) * proj2
+
+
     tmp = proj2.sum(axis=0, keepdims=True)
     divider = word_mask_1.sum(axis=[2], keepdims=True)
     divider += tensor.eq(divider, numpy_floatX(0.0))
@@ -162,7 +172,9 @@ def train_lstm(
     char_dict = {},
     pos_dict = {},
     word_layers=0,
-    letter_layers=0
+    letter_layers=0,
+    use_relevance_layer=False,
+    input_path="Data/training_data.txt"
 ):
 
     # Model options
@@ -176,9 +188,6 @@ def train_lstm(
 
     # Load the training data
     print 'Loading data'
-
-    input_path = "Data/training_data.txt"
-
     load_data(input_path, char_dict)
 
     max_word_count = 0
@@ -230,7 +239,7 @@ def train_lstm(
 
     f_cost = theano.function([xc, mask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
 
-    grads = tensor.grad(cost, wrt=tparams.values())
+    grads = tensor.grad(cost, wrt=tparams.values(), disconnected_inputs='warn')
     f_grad = theano.function([xc, mask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
@@ -383,6 +392,9 @@ if __name__ == '__main__':
     a.add_argument("--pretrain", help="Divide a 90-10 training/eval thing", action="store_true")
     a.add_argument("--words", help="Number of recurrent layers (word level)", type=int, default=0)
     a.add_argument("--letters", help="Number of recurrent layers (letter level)", type=int, default=0)
+    a.add_argument("--use-relevance-layer", help="Apply a weighted average at the last level",
+        action="store_true")
+    a.add_argument("--input", help="Training file to use", default="Data/training_data.txt")
 
     p = a.parse_args()
 
@@ -392,5 +404,7 @@ if __name__ == '__main__':
         reload_model=p.model,
         pretrain=p.pretrain,
         word_layers=p.words,
-        letter_layers=p.letters
+        letter_layers=p.letters,
+        use_relevance_layer=p.use_relevance_layer,
+        input_path=p.input
     )

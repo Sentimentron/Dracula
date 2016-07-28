@@ -121,3 +121,28 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
 
     return pred
+
+def sigmoid_layer(proj, U, b, y_mask, maxw):
+    """
+        Does most of a soft-max, but applies sigmoid to the result.
+        :param proj: Output from previous layer
+        :param U: Weight matrix
+        :param b: Classification bias layer
+        :param y_mask: Regions to set to zero.
+        :param maxw: The maximum word index that's defined.
+    """
+    raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.nnet.sigmoid(tensor.dot(p, U) + b),
+            outputs_info=None,
+            sequences=[proj, tensor.arange(maxw)]
+            )
+
+    #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
+    #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)
+
+    pred = tensor.zeros_like(raw_pred)
+    pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
+
+    return tensor.addbroadcast(pred, 2)
+
+
+
