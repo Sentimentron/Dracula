@@ -69,6 +69,7 @@ def build_model(tparams, options, maxw, training=True):
     _min = dist.min(axis=0)
     tmp = tensor.concatenate([tmp, _max, _min], axis=2)
     proj2 = tmp.dimshuffle(1, 0, 2)
+    avg = proj2
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
@@ -94,11 +95,15 @@ def build_model(tparams, options, maxw, training=True):
     # should be (1, mini batch idx, 1
     #word_char_count = dist.sum(axis=0)
 
-    proj_relevance = sigmoid_layer(proj2, tparams['Urel'], tparams['brel'], y_mask, maxw)
+    proj3 = bidirectional_lstm_layer(tparams, avg, options, "relevance", None, 3)
+    proj_relevance = sigmoid_layer(proj3, tparams['Urel'], tparams['brel'], y_mask, maxw)
 
     if not options['use_relevance_layer']:
         proj_relevance = tensor.ones_like(proj_relevance)
 
+    #proj_relevance_sum = proj_relevance.sum(axis=0, keepdims=True)
+    #proj_relevance_sum += tensor.eq(proj_relevance_sum, numpy_floatX(0.0))
+    #proj_relevance = proj_relevance / proj_relevance_sum
     tmp = proj2.sum(axis=0, keepdims=True) * proj_relevance
     divider = word_mask_1.sum(axis=[2], keepdims=True)
     divider += tensor.eq(divider, numpy_floatX(0.0))
@@ -151,7 +156,7 @@ def train_lstm(
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=20,  # The batch size during training.
+    batch_size=128,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 

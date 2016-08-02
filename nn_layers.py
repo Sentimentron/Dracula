@@ -139,7 +139,7 @@ def sigmoid_layer(proj, U, b, y_mask, maxw):
     #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
     #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)
 
-    pred = tensor.zeros_like(raw_pred)
+    pred = tensor.ones_like(raw_pred)
     pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
 
     return tensor.addbroadcast(pred, 2)
