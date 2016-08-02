@@ -31,6 +31,7 @@ def init_params(options, reloaded=False):
     nparams_wlayers = set([x for x in nparams if "lstm_words_" in x])
     options_wlayers = set([x for x in options if "lstm_words_" in x])
     regen_last_layer = options_wlayers != nparams_wlayers
+    logging.debug("Regenerating last layer...")
 
     if not reloaded:
         return nparams

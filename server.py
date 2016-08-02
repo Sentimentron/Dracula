@@ -13,9 +13,9 @@ app = Flask(__name__)
 from collections import defaultdict, Counter
 
 model = None
-max_word_count = get_max_word_count("Data/training_data.txt")
-max_word_length = get_max_word_length("Data/training_data.txt")
-max_length = get_max_length("Data/training_data.txt")
+max_word_count = get_max_word_count("Data/semeval.txt")
+max_word_length = get_max_word_length("Data/semeval.txt")
+max_length = get_max_length("Data/semeval.txt")
 
 def get_lstm(
     patience=10,  # Number of epoch to wait before early stop if no progress
@@ -40,7 +40,8 @@ def get_lstm(
     word_dict = {},
     pos_dict = {},
     letter_layers=1,
-    word_layers=4
+    word_layers=1,
+    use_relevance_layer=True
 ):
 
     # Model options
@@ -74,7 +75,8 @@ def get_lstm(
 
     # use_noise is for dropout
     (xc, mask,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count, False)
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, \
+     model_options, max_word_count, False)
 
     if decay_c > 0.:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -112,6 +114,7 @@ def hello():
       full_text.append("")
     windows = []
     for text in find_ngrams(full_text, max_word_count):
+      print text, max_word_count
       text = " ".join(text)
       #print text
       chars, labels = string_to_unprepared_format(text, model[-1]['char_dict'])
