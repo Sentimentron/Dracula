@@ -84,7 +84,7 @@ def load_data(path, chardict = {}, allow_append=True):
                     cur_chars.append(cidx)
                 buf.append(cur_chars)
             chars.append(buf)
-            labels.append(int(float(polarity)))
+            labels.append(float(polarity))
     return chars, labels
 
 
@@ -110,8 +110,8 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
 
     x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
     x_mask = numpy.zeros((maxw, maxwlen, n_samples, dim_proj)).astype(theano.config.floatX)
-    y = numpy.zeros((1, n_samples)).astype('int8')
-    y_mask = numpy.zeros((1, n_samples)).astype('int8')
+    y = numpy.zeros((1, n_samples)).astype('float32')
+    y_mask = numpy.zeros((1, n_samples)).astype('float32')
 
     for idx, (s_c, l) in enumerate(zip(char_seqs, labels)):
         # idx is the current position in the mini-batch
@@ -119,8 +119,8 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
         # l is the current label
 
         # Set the y-label
-        y[0, idx] = l + 1 # 2 = positive, 1 = neutral, 0 = negative
-        y_mask[0, idx] = 1
+        y[0, idx] = l
+        y_mask[0, idx] = 1.
 
         warning = None
 

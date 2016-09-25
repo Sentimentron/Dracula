@@ -47,7 +47,7 @@ def generate_init_params(options, params):
 
     randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])*2 - 1
-    params['Cemb'] = (0.01 * randn).astype(config.floatX)
+    params['Cemb'] = (0.001 * randn).astype(config.floatX)
 
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)
@@ -55,12 +55,12 @@ def generate_init_params(options, params):
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
-        params = param_init_bidirection_lstm(options, params, prefix=name, mult=3)
+        params = param_init_bidirection_lstm(options, params, prefix=name)
 
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(options['dim_proj']*3,
+    params['U'] = 0.001 * numpy.random.randn(options['dim_proj']*3,
                                             options['ydim']).astype(config.floatX)
-    params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
+    params['b'] = numpy.zeros((1,)).astype(config.floatX)
 
     return params
 

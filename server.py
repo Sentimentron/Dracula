@@ -1,5 +1,6 @@
 __author__ = 'rtownsend'
 
+import numpy
 from lstm import build_model
 from modelio import *
 from nn_params import *
@@ -40,7 +41,7 @@ def get_lstm(
     word_dict = {},
     pos_dict = {},
     letter_layers=1,
-    word_layers=4
+    word_layers=2
 ):
 
     # Model options
@@ -130,10 +131,11 @@ def hello():
 
     # Scan along each n-word window,
     # build up a list of the most popular tags
-    max_target_c = Counter([x for x, _ in windows])
-    max_label, _ = max_target_c.most_common()[0]
+    response['score'] = float(numpy.average(windows))
+#   max_target_c = Counter([x for x, _ in windows])
+#   max_label, _ = max_target_c.most_common()[0]
 
-    response['label'] = max_label
+#   response['label'] = max_label
 
     return jsonify(**response)
 

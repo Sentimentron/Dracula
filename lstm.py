@@ -34,8 +34,8 @@ numpy.random.seed(SEED)
 def build_model(tparams, options, maxw, training=True):
     xc = tensor.tensor3('xc', dtype='int8')
     mask = tensor.tensor4('mask', dtype=config.floatX)
-    y = tensor.matrix('y', dtype='int8')
-    y_mask = tensor.matrix('y_mask', dtype='int8')
+    y = tensor.matrix('y', dtype='float32')
+    y_mask = tensor.matrix('y_mask', dtype='float32')
 
     n_batch = xc.shape[2]
 
@@ -60,26 +60,22 @@ def build_model(tparams, options, maxw, training=True):
     dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
     divider = dist_mask.sum(axis=0)
     divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
+    divider = theano.printing.Print("divider")(divider)
 
     dist = dist * dist_mask
     tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
     tmp /= divider
-
-    _max = dist.max(axis=0)
-    _min = dist.min(axis=0)
-    tmp = tensor.concatenate([tmp, _max, _min], axis=2)
-    proj2 = tmp.dimshuffle(1, 0, 2)
+    proj2 = tmp
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
-        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name, None, 3)
+        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name, None, 1)
 
-    # dist structure is (character in word, mini-batch idx, word, all ones)
+    proj2 = theano.printing.Print("proj2")(proj2)
+    proj2 = proj2.dimshuffle(1, 0, 2)
     # dist structure is (word, character in word, mini-batch idx, all ones)
     dist = dist.dimshuffle(2, 1, 0, 3)
-#    word_mask = dist.max(axis=3, keepdims=True)
     # now looking at (word, character in word, min-batch idx, [1])
-#    word_sum = proj2.sum(axis=0, keepdims=True)
 
     word_mask_1 = dist.max(axis=[3])
     word_mask_2 = word_mask_1.max(axis=[2], keepdims=True)
@@ -94,25 +90,42 @@ def build_model(tparams, options, maxw, training=True):
     # should be (1, mini batch idx, 1
     #word_char_count = dist.sum(axis=0)
 
-#    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
+    # Dividing the output by the number of letters in the word?
+    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
     tmp = proj2.sum(axis=0, keepdims=True)
+    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
     divider = word_mask_1.sum(axis=[2], keepdims=True)
     divider += tensor.eq(divider, numpy_floatX(0.0))
     tmp = tmp / divider
+    tmp = theano.printing.Print("tmp",attrs=["shape"])(tmp)
 
- #   tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
-    pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
-    #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+    tmp1 = tmp.mean(axis=0, keepdims=True)
+    tmp1 = theano.printing.Print("tmp1",attrs=["shape"])(tmp1)
+    tmp2 = tmp.max(axis=0, keepdims=True)
+    tmp3 = tmp.min(axis=0, keepdims=True)
+
+    tmp = tensor.concatenate([tmp1, tmp2, tmp3], axis=2)
+    tmp = theano.printing.Print("tmp")(tmp)
+    pred = sigmoid_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
+    pred = pred.dimshuffle(0, 2, 1)
+#    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+    # Pred shape should be (word, 1, mini batch idx)
+#    pred = pred.mean(axis=0, keepdims=True)
+#    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+#   y = theano.printing.Print("y", attrs=["shape"])(y)
+#    pred = pred.dimshuffle(0, 2, 1)
 
     f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+#    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred = theano.function([xc, mask, y_mask], pred > 0, name='f_pred', on_unused_input='ignore')
 
-    def cost_scan_i(i, j, free_var):
-        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
+#    def cost_scan_i(i, j, free_var):
+#        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
 
-    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
+#    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
 
-    cost = cost.mean()
+#    cost = cost.mean()
+    cost = (tensor.sqr(y - pred)).mean()
 
     return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
 
@@ -177,7 +190,7 @@ def train_lstm(
     # Load the training data
     print 'Loading data'
 
-    input_path = "Data/training_data.txt"
+    input_path = "Data/training.txt"
 
     load_data(input_path, char_dict)
 
@@ -194,10 +207,8 @@ def train_lstm(
     get_max_word_length(input_path))
     max_length = max(max_word_length, get_max_length(input_path))
 
-    #ydim = numpy.max(numpy.max(train[2])) + 1
     #print numpy.max(train[2])
-#    ydim = max(itertools.chain.from_iterable(train[2])) + 1
-    ydim = 3
+    ydim = 1
     print "ydim =", ydim
 
     model_options['ydim'] = ydim
