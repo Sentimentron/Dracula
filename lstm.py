@@ -60,7 +60,6 @@ def build_model(tparams, options, maxw, training=True):
     dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
     divider = dist_mask.sum(axis=0)
     divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
-    divider = theano.printing.Print("divider")(divider)
 
     dist = dist * dist_mask
     tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
@@ -71,13 +70,13 @@ def build_model(tparams, options, maxw, training=True):
         name = 'lstm_words_%d' % (i + 1,)
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name, None, 1)
 
-    proj2 = theano.printing.Print("proj2")(proj2)
     proj2 = proj2.dimshuffle(1, 0, 2)
     # dist structure is (word, character in word, mini-batch idx, all ones)
     dist = dist.dimshuffle(2, 1, 0, 3)
+    dist_mask = dist_mask.dimshuffle(2, 1, 0, 3)
     # now looking at (word, character in word, min-batch idx, [1])
 
-    word_mask_1 = dist.max(axis=[3])
+    word_mask_1 = dist_mask.max(axis=[3])
     word_mask_2 = word_mask_1.max(axis=[2], keepdims=True)
 
     proj2 = proj2 * word_mask_2
@@ -90,22 +89,21 @@ def build_model(tparams, options, maxw, training=True):
     # should be (1, mini batch idx, 1
     #word_char_count = dist.sum(axis=0)
 
-    # Dividing the output by the number of letters in the word?
-    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
+#    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
+    # Now we've got the per-word representations spread out over character
+    # and word position, so we need to now average each letter representation
     tmp = proj2.sum(axis=0, keepdims=True)
-    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
     divider = word_mask_1.sum(axis=[2], keepdims=True)
     divider += tensor.eq(divider, numpy_floatX(0.0))
     tmp = tmp / divider
-    tmp = theano.printing.Print("tmp",attrs=["shape"])(tmp)
 
+    # Then the word representations go through min-max-avg pooling
     tmp1 = tmp.mean(axis=0, keepdims=True)
-    tmp1 = theano.printing.Print("tmp1",attrs=["shape"])(tmp1)
     tmp2 = tmp.max(axis=0, keepdims=True)
     tmp3 = tmp.min(axis=0, keepdims=True)
 
     tmp = tensor.concatenate([tmp1, tmp2, tmp3], axis=2)
-    tmp = theano.printing.Print("tmp")(tmp)
+    #    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
     pred = sigmoid_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
     pred = pred.dimshuffle(0, 2, 1)
 #    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
