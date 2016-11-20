@@ -43,30 +43,41 @@ def build_model(tparams, options, maxw, training=True):
     dist = emb
     dist_mask = mask
 
+    # dist = (32, 20, 50, 32)
+    # word index (0), char index (1), batch index (2), dim_proj (3)
     dist = dist * dist_mask
+    # Now need to reshape dist into a 4D tensor for conv2d
+    # Rearrange so the word is on the outer-most axis
+    # Then followed by the batch size, then the 2D char maps
+    dist = dist.dimshuffle(0, 2, 1, 3)
+    # So shoud now be word index (0), batch index (1), char index (2), dim_proj
+    # (3)
 
-    for i in range(options['letter_layers']):
-        name = 'lstm_chars_%d' % (i + 1,)
+    dist = theano.printing.Print("dist", attrs=["shape"])(dist)
+    def _conv2d_step(x_):
+        # x_ shape = (3, 20, 32)
+        p_ = tparams['conv']
+        x_ = theano.printing.Print("x_", attrs=["shape"])(x_)
+        # x_ shape should batch index (0), char index (1) and dim_proj (2)
+        # Insert a 1-length axis after the batch to simulate one input channel
+        x_ = x_.dimshuffle(0, 'x', 1, 2)
+        return tensor.nnet.conv2d(x_, p_, border_mode='valid')
 
-        def _step(x_):
-            t = bidirectional_lstm_layer(tparams, x_, options, name)
-            return t
+    # dist shape = (32, 3, 5, 16, 28)
+    # word index (0), batch index (1), filter output size (2), filter x (3),
+    # filter y (4)
+    dist, updates = theano.scan(_conv2d_step, sequences=[dist], n_steps=dist.shape[0])
+    dist = theano.printing.Print("dist-conv2d", attrs=["shape"])(dist)
+    dist = dist.flatten(3)
+    dist = theano.printing.Print("dist-flatten", attrs=["shape"])(dist)
+    # dist shape = (32, 3, 2240)
+    # word index (0), batch index (1), embeddings (2)
 
-        dist, updates = theano.scan(_step, sequences=[dist], n_steps=dist.shape[0])
-
-    dist = dist.dimshuffle(1, 2, 0, 3)
-    dist_mask = tensor.cast(dist_mask, theano.config.floatX)
-    dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
-    divider = dist_mask.sum(axis=0)
-    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
-
-    dist = dist * dist_mask
-    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
-    tmp /= divider
-    proj2 = tmp.dimshuffle(1, 0, 2)
+    proj2 = dist
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
+        print(options['lstm_proj'])
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
@@ -101,7 +112,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=8,  # character embedding dimension and LSTM number of hidden units.
     patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -145,7 +156,8 @@ def train_lstm(
     # Load the training data
     print 'Loading data'
 
-    input_path = "Data/Gate-Train.conll"
+#    input_path = "Data/Gate-Train.conll"
+    input_path = "Data/Gate-Eval.conll"
 
     load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict)
 
@@ -173,6 +185,8 @@ def train_lstm(
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
     model_options['n_words'] = len(word_dict)+1
+
+    model_options['max_letters'] = max_word_length
 
     model_options['word_dict'] = word_dict
     model_options['char_dict'] = char_dict
