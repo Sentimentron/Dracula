@@ -34,8 +34,8 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1, go
     def _step(x_, h_, c_):
 
         U = tparams[_p(prefix, 'U')]
-        h_ = theano.printing.Print("h_", attrs=["shape"])(h_)
-        U = theano.printing.Print("U_", attrs=["shape"])(U)
+#        h_ = theano.printing.Print("h_", attrs=["shape"])(h_)
+#        U = theano.printing.Print("U_", attrs=["shape"])(U)
         preact = tensor.dot(h_, U)
         preact += x_
 
@@ -50,12 +50,12 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1, go
 
         return h, c
 
-    state_below = theano.printing.Print("state_below", attrs=["shape"])(state_below)
+ #   state_below = theano.printing.Print("state_below", attrs=["shape"])(state_below)
     W = tparams[_p(prefix, 'W')]
     b = tparams[_p(prefix, 'b')]
 
-    W = theano.printing.Print("W", attrs=["shape"])(W)
-    b = theano.printing.Print("W", attrs=["shape"])(b)
+#    W = theano.printing.Print("W", attrs=["shape"])(W)
+#    b = theano.printing.Print("W", attrs=["shape"])(b)
     state_below = tensor.dot(state_below, W) + b
 
     lstm_proj = options['lstm_proj']*mult

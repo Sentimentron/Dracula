@@ -82,11 +82,11 @@ def param_init_lstm(options, params, prefix='lstm', proj=1):
     W = numpy.concatenate([ortho_weight(proj),
                            ortho_weight(proj),
                            ortho_weight(proj),
-                           ortho_weight(proj)])
+                           ortho_weight(proj)], axis=1)
     U = numpy.concatenate([ortho_weight(proj),
                            ortho_weight(proj),
                            ortho_weight(proj),
-                           ortho_weight(proj)])
+                           ortho_weight(proj)], axis=1)
     b = numpy.zeros((4 * proj,))
     print(b.shape)
 

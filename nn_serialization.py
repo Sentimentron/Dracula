@@ -31,11 +31,13 @@ def load_params(path, params):
     logging.info("Loading model from file '%s'...", path)
     pp = numpy.load(path)
     for k in pp:
+        print(k)
         params[k] = pp[k]
     path = "%s.pkl" % (path,)
     logging.info("Loading model from file '%s'...", path)
     with open(path, 'rb') as fin:
         data = pickle.load(fin)
+        print(data.keys())
         for k in ['dim_proj_chars', 'char_dict', 'pos_dict', 'word_dict']:
             params[k] = data[k]
     return params

@@ -53,11 +53,11 @@ def build_model(tparams, options, maxw, training=True):
     # So shoud now be word index (0), batch index (1), char index (2), dim_proj
     # (3)
 
-    dist = theano.printing.Print("dist", attrs=["shape"])(dist)
+    #dist = theano.printing.Print("dist", attrs=["shape"])(dist)
     def _conv2d_step(x_):
         # x_ shape = (3, 20, 32)
         p_ = tparams['conv']
-        x_ = theano.printing.Print("x_", attrs=["shape"])(x_)
+        #x_ = theano.printing.Print("x_", attrs=["shape"])(x_)
         # x_ shape should batch index (0), char index (1) and dim_proj (2)
         # Insert a 1-length axis after the batch to simulate one input channel
         x_ = x_.dimshuffle(0, 'x', 1, 2)
@@ -67,9 +67,9 @@ def build_model(tparams, options, maxw, training=True):
     # word index (0), batch index (1), filter output size (2), filter x (3),
     # filter y (4)
     dist, updates = theano.scan(_conv2d_step, sequences=[dist], n_steps=dist.shape[0])
-    dist = theano.printing.Print("dist-conv2d", attrs=["shape"])(dist)
+#    dist = theano.printing.Print("dist-conv2d", attrs=["shape"])(dist)
     dist = dist.flatten(3)
-    dist = theano.printing.Print("dist-flatten", attrs=["shape"])(dist)
+#    dist = theano.printing.Print("dist-flatten")(dist)
     # dist shape = (32, 3, 2240)
     # word index (0), batch index (1), embeddings (2)
 
@@ -81,7 +81,7 @@ def build_model(tparams, options, maxw, training=True):
         proj2 = bidirectional_lstm_layer(tparams, proj2, options, name)
 
     pred = softmax_layer(proj2, tparams['U'], tparams['b'], y_mask, maxw, training)
-    #pred = theano.printing.Print("pred", attrs=["shape"])(pred)
+    #pred = theano.printing.Print("pred")(pred)
 
     f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
@@ -112,7 +112,7 @@ def split_at(src, prop):
     return (src_chars, src_words, src_labels), (val_chars, val_words, val_labels)
 
 def train_lstm(
-    dim_proj_chars=8,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
     patience=4,  # Number of epoch to wait before early stop if no progress
     max_epochs=5000,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -124,7 +124,7 @@ def train_lstm(
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=50,  # The batch size during training.
+    batch_size=8,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 
@@ -139,7 +139,7 @@ def train_lstm(
     char_dict = {},
     word_dict = {},
     pos_dict = {},
-    word_layers=0,
+    word_layers=1,
     letter_layers=0
 ):
 
@@ -156,8 +156,8 @@ def train_lstm(
     # Load the training data
     print 'Loading data'
 
-#    input_path = "Data/Gate-Train.conll"
-    input_path = "Data/Gate-Eval.conll"
+    input_path = "Data/Gate-Train.conll"
+#    input_path = "Data/Gate-Eval.conll"
 
     load_pos_tagged_data(input_path, char_dict, word_dict, pos_dict)
 

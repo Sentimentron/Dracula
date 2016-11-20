@@ -13,9 +13,9 @@ app = Flask(__name__)
 from collections import defaultdict, Counter
 
 model = None
-max_word_count = 47#13 #get_max_word_count("Data/Gate.conll") + 12
-max_word_length = get_max_word_length("Data/Gate.conll")
-max_length = get_max_length("Data/Gate.conll")
+max_word_count = get_max_word_count("Data/Gate-Train.conll")
+max_word_length = get_max_word_length("Data/Gate-Train.conll")
+max_length = get_max_length("Data/Gate-Train.conll")
 
 def get_lstm(
     patience=10,  # Number of epoch to wait before early stop if no progress
@@ -39,8 +39,8 @@ def get_lstm(
     char_dict = {},
     word_dict = {},
     pos_dict = {},
-    letter_layers=2,
-    word_layers=3
+    letter_layers=0,
+    word_layers=2
 ):
 
     # Model options
@@ -60,6 +60,7 @@ def get_lstm(
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
     model_options['n_words'] = len(word_dict)+1
+    model_options['max_letters'] = max_word_length
 
     # This create the initial parameters as numpy ndarrays.
     # Dict name (string) -> numpy ndarray
@@ -120,7 +121,7 @@ def hello():
 
       # TODO: 32 is the n_proj
       xc, mask, y, y_mask = prepare_data(chars, labels, max_word_count, \
-      max_word_length, 32)
+      max_word_length, 16)
 
       pred = model[-3](xc, mask, y_mask)
       probs = model[-4](xc, mask, y_mask)
