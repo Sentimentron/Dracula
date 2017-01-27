@@ -20,10 +20,13 @@ def pred_probs(f_pred_prob, prepare_data, data, iterator, verbose=False, maxlen=
     n_done = 0
 
     for _, valid_index in iterator:
-        x, mask, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
-                                                 numpy.array(data[1])[valid_index],
+        x0, mask0, wmask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
+                                                 numpy.array(data[2])[valid_index],
                                                  maxlen=maxlen)
-        prediction_probs = f_pred_prob(x, mask, wmask, y_mask)
+        x1, mask0, wmask, y, y_mask = prepare_data([data[1][t] for t in valid_index],
+                                                 numpy.array(data[2])[valid_index],
+                                                 maxlen=maxlen)
+        prediction_probs = f_pred_prob(x0, x1, mask0, mask1, wmask, y_mask)
         probs[valid_index, :] = prediction_probs
 
         n_done += len(valid_index)
@@ -42,10 +45,13 @@ def pred_error(f_pred, prepare_data, data, iterator, maxw, max_word_length, dim_
     valid_err = []
     valid_shapes = []
     for _, valid_index in iterator:
-        xc, mask, y, y_mask = prepare_data([data[0][t] for t in valid_index],
-                                                 numpy.array(data[1])[valid_index],
-                                                 maxw, max_word_length, dim_proj)
-        preds = f_pred(xc, mask, y_mask)
+        xc0, mask0, y, y_mask = prepare_data([data[0][t] for t in valid_index],
+                                              numpy.array(data[2])[valid_index],
+                                              maxw, max_word_length, dim_proj)
+        xc1, mask1, y, y_mask = prepare_data([data[1][t] for t in valid_index],
+                                              numpy.array(data[2])[valid_index],
+                                              maxw, max_word_length, dim_proj)
+        preds = f_pred(xc0, xc1, mask0, mask1, y_mask)
         preds = preds.flatten()
         y_mask = y_mask.flatten()
         y = y.flatten()

@@ -12,14 +12,14 @@ import sys
 import tempfile
 
 from collections import defaultdict
-import csv
-
+import unicodecsv as csv
 
 def build_character_dictionary(path, chars = {}):
-    with io.open(path, mode='r', encoding='utf8') as fin:
-        filereader = csv.reader(fin)
-        for text, polarity in filereader:
-            text = text.split()
+    with io.open(path, mode='r') as fin:
+        filereader = csv.reader(fin, delimiter='\t')
+        for c, (_, _, _, q1, q2, dup) in enumerate(filereader):
+            print(c)
+            text = q1.split() + q2.split()
             for word in text:
                 for c in word:
                     if c not in chars:
@@ -29,11 +29,14 @@ def build_character_dictionary(path, chars = {}):
 def get_tweet_words(path):
     t = defaultdict(list)
     with io.open(path, mode='r', encoding='utf8') as fin:
-        filereader = csv.reader(fin)
-        for c, (text, _) in enumerate(filereader):
-            text = text.split()
+        filereader = csv.reader(fin, delimiter='\t')
+        for c, (_, _, _, q1, q2, dup) in enumerate(filereader):
+            text = q1.split()
             for word in text:
-                t[c].append(word)
+                t[2*c].append(word)
+            text = q2.split()
+            for word in text:
+                t[2*c + 1].append(word)
     return t
 
 def get_max_word_count(path):
@@ -71,21 +74,30 @@ def load_data(path, chardict = {}, allow_append=True):
         build_character_dictionary(path, chardict)
 
     cur_chars = []
-    chars, labels = [], []
+    chars1, chars2, labels = [], [], []
     with open(path, 'r') as fin:
-        filereader = csv.reader(fin)
-        for text, polarity in filereader:
+        filereader = csv.reader(fin, delimiter='\t')
+        for _, _, _, q1, q2, dup in filereader:
             buf = []
-            text = text.split()
+            text = q1.split()
             for i, word in enumerate(text):
                 cur_chars = []
                 for j, c in enumerate(word):
                     cidx = chardict[c] if c in chardict else 0
                     cur_chars.append(cidx)
                 buf.append(cur_chars)
-            chars.append(buf)
-            labels.append(float(polarity))
-    return chars, labels
+            chars1.append(buf)
+            buf = []
+            text = q2.split()
+            for i, word in enumerate(text):
+                cur_chars = []
+                for j, c in enumerate(word):
+                    cidx = chardict[c] if c in chardict else 0
+                    cur_chars.append(cidx)
+                buf.append(cur_chars)
+            chars2.append(buf)
+            labels.append(float(dup))
+    return chars1, chars2, labels
 
 
 def string_to_unprepared_format(text, chardict):

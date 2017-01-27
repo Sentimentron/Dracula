@@ -27,24 +27,31 @@ import os.path
 import pickle
 import random
 
+from theano.compile.nanguardmode import NanGuardMode
+
 # Set the random number generators' seeds for consistency
 SEED = 123
 numpy.random.seed(SEED)
 
 def build_model(tparams, options, maxw, training=True):
-    xc = tensor.tensor3('xc', dtype='int8')
-    mask = tensor.tensor4('mask', dtype=config.floatX)
+    xc0 = tensor.tensor3('xc', dtype='int8')
+    xc1 = tensor.tensor3('xc', dtype='int8')
+    mask0 = tensor.tensor4('mask', dtype=config.floatX)
+    mask1 = tensor.tensor4('mask', dtype=config.floatX)
     y = tensor.matrix('y', dtype='float32')
     y_mask = tensor.matrix('y_mask', dtype='float32')
 
-    n_batch = xc.shape[2]
+    n_batch = xc0.shape[2]
 
-    emb = embeddings_layer(xc, tparams['Cemb'], options['dim_proj'])
+    emb0 = embeddings_layer(xc0, tparams['Cemb'], options['dim_proj'])
+    emb1 = embeddings_layer(xc1, tparams['Cemb'], options['dim_proj'])
 
-    dist = emb
-    dist_mask = mask
-
-    dist = dist * dist_mask
+    dist0 = emb0
+    dist_mask0 = mask0
+    dist0 = dist0 * dist_mask0
+    dist1 = emb1
+    dist_mask1 = mask1
+    dist1 = dist1 * dist_mask1
 
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)
@@ -53,34 +60,48 @@ def build_model(tparams, options, maxw, training=True):
             t = bidirectional_lstm_layer(tparams, x_, options, name)
             return t
 
-        dist, updates = theano.scan(_step, sequences=[dist], n_steps=dist.shape[0])
+        dist0, updates = theano.scan(_step, sequences=[dist0], n_steps=dist0.shape[0])
+        dist1, updates = theano.scan(_step, sequences=[dist1], n_steps=dist1.shape[0])
 
-    dist = dist.dimshuffle(1, 2, 0, 3)
-    dist_mask = tensor.cast(dist_mask, theano.config.floatX)
-    dist_mask = dist_mask.dimshuffle(1, 2, 0, 3)
-    divider = dist_mask.sum(axis=0)
-    divider += tensor.eq(divider, numpy_floatX(0.0)) # Filter NaNs
-    divider = theano.printing.Print("divider")(divider)
+    dist0 = dist0.dimshuffle(1, 2, 0, 3)
+    dist1 = dist1.dimshuffle(1, 2, 0, 3)
+    dist_mask0 = tensor.cast(dist_mask0, theano.config.floatX)
+    dist_mask1 = tensor.cast(dist_mask1, theano.config.floatX)
+    dist_mask0 = dist_mask0.dimshuffle(1, 2, 0, 3)
+    dist_mask1 = dist_mask1.dimshuffle(1, 2, 0, 3)
+    divider0 = dist_mask0.sum(axis=0)
+    divider1 = dist_mask1.sum(axis=0)
+    divider0 += tensor.eq(divider0, numpy_floatX(0.0)) # Filter NaNs
+    divider1 += tensor.eq(divider1, numpy_floatX(0.0)) # Filter NaNs
 
-    dist = dist * dist_mask
-    tmp = tensor.cast(dist.sum(axis=0), theano.config.floatX)
-    tmp /= divider
-    proj2 = tmp
+    dist0 = dist0 * dist_mask0
+    dist1 = dist1 * dist_mask1
+    tmp0 = tensor.cast(dist0.sum(axis=0), theano.config.floatX)
+    tmp1 = tensor.cast(dist1.sum(axis=0), theano.config.floatX)
+    tmp0 /= divider0
+    tmp1 /= divider1
+    proj20 = tmp0
+    proj21 = tmp1
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
-        proj2 = bidirectional_lstm_layer(tparams, proj2, options, name, None, 1)
+        proj20 = bidirectional_lstm_layer(tparams, proj20, options, name, None, 1)
+        proj21 = bidirectional_lstm_layer(tparams, proj21, options, name, None, 1)
 
-    proj2 = theano.printing.Print("proj2")(proj2)
-    proj2 = proj2.dimshuffle(1, 0, 2)
+    proj20 = proj20.dimshuffle(1, 0, 2)
+    proj21 = proj21.dimshuffle(1, 0, 2)
     # dist structure is (word, character in word, mini-batch idx, all ones)
-    dist = dist.dimshuffle(2, 1, 0, 3)
+    dist0 = dist0.dimshuffle(2, 1, 0, 3)
+    dist1 = dist1.dimshuffle(2, 1, 0, 3)
     # now looking at (word, character in word, min-batch idx, [1])
 
-    word_mask_1 = dist.max(axis=[3])
-    word_mask_2 = word_mask_1.max(axis=[2], keepdims=True)
+    word_mask_10 = dist0.max(axis=[3])
+    word_mask_11 = dist1.max(axis=[3])
+    word_mask_20 = word_mask_10.max(axis=[2], keepdims=True)
+    word_mask_21 = word_mask_11.max(axis=[2], keepdims=True)
 
-    proj2 = proj2 * word_mask_2
+    proj20 = proj20 * word_mask_20
+    proj21 = proj21 * word_mask_21
 
     # char mask is (word, character in word, min batch idx, 1)
     # word_mask is (word, character in word, mini batch idx)
@@ -91,76 +112,80 @@ def build_model(tparams, options, maxw, training=True):
     #word_char_count = dist.sum(axis=0)
 
     # Dividing the output by the number of letters in the word?
-    proj2 = theano.printing.Print("proj2", attrs=["shape"])(proj2)
-    tmp = proj2.sum(axis=0, keepdims=True)
-    tmp = theano.printing.Print("tmp", attrs=["shape"])(tmp)
-    divider = word_mask_1.sum(axis=[2], keepdims=True)
-    divider += tensor.eq(divider, numpy_floatX(0.0))
-    tmp = tmp / divider
-    tmp = theano.printing.Print("tmp",attrs=["shape"])(tmp)
+    tmp0 = proj20.sum(axis=0, keepdims=True)
+    tmp1 = proj21.sum(axis=0, keepdims=True)
+    divider0 = word_mask_10.sum(axis=[2], keepdims=True)
+    divider1 = word_mask_11.sum(axis=[2], keepdims=True)
+    divider0 += tensor.eq(divider0, numpy_floatX(0.0))
+    divider1 += tensor.eq(divider1, numpy_floatX(0.0))
+    tmp0 = tmp0 / divider0
+    tmp1 = tmp1 / divider1
 
-    tmp1 = tmp.mean(axis=0, keepdims=True)
-    tmp1 = theano.printing.Print("tmp1",attrs=["shape"])(tmp1)
-    tmp2 = tmp.max(axis=0, keepdims=True)
-    tmp3 = tmp.min(axis=0, keepdims=True)
+    tmp10 = tmp0.mean(axis=0, keepdims=True)
+    tmp11 = tmp1.mean(axis=0, keepdims=True)
+    tmp20 = tmp0.max(axis=0, keepdims=True)
+    tmp21 = tmp1.max(axis=0, keepdims=True)
+    tmp30 = tmp0.min(axis=0, keepdims=True)
+    tmp31 = tmp1.min(axis=0, keepdims=True)
 
-    tmp = tensor.concatenate([tmp1, tmp2, tmp3], axis=2)
-    tmp = theano.printing.Print("tmp")(tmp)
-    pred = sigmoid_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
+    tmp0 = tensor.concatenate([tmp10, tmp20, tmp30], axis=2)
+    tmp1 = tensor.concatenate([tmp11, tmp21, tmp31], axis=2)
+    #    diff = tensor.abs_(tmp0-tmp1)
+    diff = (tmp0-tmp1)**2
+    pred = diff.mean(axis=2, keepdims=True)
     pred = pred.dimshuffle(0, 2, 1)
-#    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
-    # Pred shape should be (word, 1, mini batch idx)
-#    pred = pred.mean(axis=0, keepdims=True)
-#    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
-#   y = theano.printing.Print("y", attrs=["shape"])(y)
-#    pred = pred.dimshuffle(0, 2, 1)
+    #    pred = tensor.switch(pred < 1, pred, tensor.ones_like(pred))
+    #pred = pred.clip(0, 1)
 
-    f_pred_prob = theano.function([xc, mask, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred_prob = theano.function([xc0, xc1, mask0, mask1, y_mask], 1-pred, name='f_pred_prob', on_unused_input='ignore')
 #    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
-    f_pred = theano.function([xc, mask, y_mask], pred > 0, name='f_pred', on_unused_input='ignore')
+    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred < 0.5, name='f_pred', on_unused_input='ignore')
 
-#    def cost_scan_i(i, j, free_var):
-#        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
+    #    cost = (tensor.sqr(pred * y)).sum()
+    # st = tensor.sqr(((pred < 0.5) - y) * diff).mean()
+    #pred = theano.printing.Print("pred")(pred)
+    #cost = 1 - y*pred
+    cost = (y - pred)**2
+    cost = cost.mean()
+    cost = theano.printing.Print("cost")(cost)
 
-#    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
-
-#    cost = cost.mean()
-    cost = (tensor.sqr(y - pred)).mean()
-
-    return xc, mask, y, y_mask, f_pred_prob, f_pred, cost
+    return xc0, xc1, mask0, mask1, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
     valid_indices = [i for i, _ in enumerate(zip(src[0], src[1]))]
     random.shuffle(valid_indices)
-    src_chars, src_labels = [], []
-    val_chars, val_labels = [], []
+    src_chars0, src_chars1, src_labels = [], [], []
+    val_chars0, val_chars1, val_labels = [], [], []
     fin = max(int(prop * len(src[0])), 1)
     print len(src[0]), prop, fin
     for i, idx in enumerate(valid_indices):
-        c = src[0][idx]
-        l = src[1][idx]
+        c0 = src[0][idx]
+        c1 = src[1][idx]
+        l = src[2][idx]
         if i < fin:
-            val_chars.append(c)
+            val_chars0.append(c0)
+            val_chars1.append(c1)
             val_labels.append(l)
         else:
-            src_chars.append(c)
+            src_chars0.append(c0)
+            src_chars1.append(c1)
             src_labels.append(l)
-    return (src_chars, src_labels), (val_chars, val_labels)
+    return (src_chars0, src_chars1, src_labels), (val_chars0, val_chars1, val_labels)
 
 def train_lstm(
-    dim_proj_chars=32,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=256,  # character embedding dimension and LSTM number of hidden units.
     patience=40,  # Number of epoch to wait before early stop if no progress
     max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
     decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
-    lrate=0.0001,  # Learning rate for sgd (not used for adadelta and rmsprop)
+    lrate=0.01,  # Learning rate for sgd (not used for adadelta and rmsprop)
     optimizer=adadelta,  # sgd, adadelta and rmsprop available, sgd very hard to use, not recommanded (probably need momentum and decaying learning rate).
     encoder='lstm',  # TODO: can be removed must be lstm.
     saveto='lstm_model.npz',  # The best model will be saved there
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=20,  # The batch size during training.
+    batch_size=32,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 
@@ -190,7 +215,7 @@ def train_lstm(
     # Load the training data
     print 'Loading data'
 
-    input_path = "Data/training.txt"
+    input_path = "Data/quora_duplicate_questions_stripped.tsv"
 
     load_data(input_path, char_dict)
 
@@ -229,24 +254,17 @@ def train_lstm(
     tparams = init_tparams(params)
 
     # use_noise is for dropout
-    (xc, mask,
+    (xc0, xc1, mask0, mask1,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
 
-    if decay_c > 0.:
-        decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
-        weight_decay = 0.
-        weight_decay += (tparams['U'] ** 2).sum()
-        weight_decay *= decay_c
-        cost += weight_decay
-
-    f_cost = theano.function([xc, mask, y, y_mask], cost, name='f_cost', on_unused_input='warn')
+    f_cost = theano.function([xc0, xc1, mask0, mask1, y, y_mask], cost, name='f_cost', on_unused_input='warn', mode=NanGuardMode(nan_is_error=True))
 
     grads = tensor.grad(cost, wrt=tparams.values())
-    f_grad = theano.function([xc, mask, y, y_mask], grads, name='f_grad', on_unused_input='warn')
+    f_grad = theano.function([xc0, xc1, mask0, mask1, y, y_mask], grads, name='f_grad', on_unused_input='warn')
 
     lr = tensor.scalar(name='lr')
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
-                                        xc, mask, y, y_mask, cost)
+                                        xc0, xc1, mask0, mask1, y, y_mask, cost)
 
     kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
     kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
@@ -283,21 +301,27 @@ def train_lstm(
                 uidx += 1
 
                 # Select the random examples for this minibatch
-                y = [train[1][t] for t in train_index]
-                x_c = [train[0][t] for t in train_index]
+                x_c_0 = [train[0][t] for t in train_index]
+                x_c_1 = [train[1][t] for t in train_index]
+                y = [train[2][t] for t in train_index]
 
                 # Get the data in numpy.ndarray format
                 # This swap the axis!
                 # Return something of shape (minibatch maxlen, n samples)
                 n_proj = dim_proj_chars# + dim_proj_words
                 #def prepare_data(char_seqs, labels, maxw, maxwlen):
-                xc, mask, y, y_mask = prepare_data(x_c, y,
+                xc0, mask0, y_,  y_mask_ = prepare_data(x_c_0, y,
                                                    max_word_count,
                                                    max_word_length,
                                                    dim_proj_chars)
-                n_samples += xc.shape[1]
+                xc1, mask1, _, _ = prepare_data(x_c_1, y,
+                                                max_word_count,
+                                                max_word_length,
+                                                dim_proj_chars)
+                y, y_mask = y_, y_mask_
+                n_samples += xc0.shape[1]
 
-                cost = f_grad_shared(xc, mask, y, y_mask)
+                cost = f_grad_shared(xc0, xc1, mask0, mask1, y, y_mask)
                 f_update(lrate)
 
                 if numpy.isnan(cost) or numpy.isinf(cost):
