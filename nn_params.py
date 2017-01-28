@@ -47,7 +47,7 @@ def generate_init_params(options, params):
 
     randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])*2 - 1
-    params['Cemb'] = (0.001 * randn).astype(config.floatX)
+    params['Cemb'] = (0.01 * randn).astype(config.floatX)
 
     for i in range(options['letter_layers']):
         name = 'lstm_chars_%d' % (i + 1,)

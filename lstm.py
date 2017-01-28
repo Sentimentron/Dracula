@@ -12,6 +12,7 @@ import time
 
 from theano.sandbox.rng_mrg import MRG_RandomStreams as RandomStreams
 from theano.tensor.shared_randomstreams import RandomStreams
+from theano.tensor.nnet import sigmoid
 
 from util import get_minibatches_idx
 from modelio import *
@@ -134,12 +135,13 @@ def build_model(tparams, options, maxw, training=True):
     diff = (tmp0-tmp1)**2
     pred = diff.mean(axis=2, keepdims=True)
     pred = pred.dimshuffle(0, 2, 1)
+    pred = sigmoid(5-pred)
     #    pred = tensor.switch(pred < 1, pred, tensor.ones_like(pred))
     #pred = pred.clip(0, 1)
 
-    f_pred_prob = theano.function([xc0, xc1, mask0, mask1, y_mask], 1-pred, name='f_pred_prob', on_unused_input='ignore')
+    f_pred_prob = theano.function([xc0, xc1, mask0, mask1, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
 #    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
-    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred < 0.5, name='f_pred', on_unused_input='ignore')
+    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred > 0.5, name='f_pred', on_unused_input='ignore')
 
     #    cost = (tensor.sqr(pred * y)).sum()
     # st = tensor.sqr(((pred < 0.5) - y) * diff).mean()
@@ -147,7 +149,6 @@ def build_model(tparams, options, maxw, training=True):
     #cost = 1 - y*pred
     cost = (y - pred)**2
     cost = cost.mean()
-    cost = theano.printing.Print("cost")(cost)
 
     return xc0, xc1, mask0, mask1, y, y_mask, f_pred_prob, f_pred, cost
 
