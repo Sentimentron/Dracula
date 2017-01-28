@@ -18,7 +18,6 @@ def build_character_dictionary(path, chars = {}):
     with io.open(path, mode='r') as fin:
         filereader = csv.reader(fin, delimiter='\t')
         for c, (_, _, _, q1, q2, dup) in enumerate(filereader):
-            print(c)
             text = q1.split() + q2.split()
             for word in text:
                 for c in word:
