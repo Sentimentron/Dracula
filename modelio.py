@@ -95,7 +95,10 @@ def load_data(path, chardict = {}, allow_append=True):
                     cur_chars.append(cidx)
                 buf.append(cur_chars)
             chars2.append(buf)
-            labels.append([float(dup)])
+            if dup == "0":
+                labels.append(1)
+            elif dup == "1":
+                labels.append(2)
     return chars1, chars2, labels
 
 
@@ -121,7 +124,7 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
 
     x_c = numpy.zeros((maxw, maxwlen, n_samples)).astype('int8')
     x_mask = numpy.zeros((maxw, maxwlen, n_samples, dim_proj)).astype(theano.config.floatX)
-    y = numpy.zeros((1, n_samples)).astype('float32')
+    y = numpy.zeros((1, n_samples)).astype('int8')
     y_mask = numpy.zeros((1, n_samples)).astype('float32')
 
     for idx, (s_c, l) in enumerate(zip(char_seqs, labels)):
@@ -131,7 +134,7 @@ def prepare_data(char_seqs, labels, maxw, maxwlen, dim_proj):
 
         # Set the y-label
         y[0, idx] = l
-        y_mask[0, idx] = 1.
+        y_mask[0, idx] = 1
 
         warning = None
 

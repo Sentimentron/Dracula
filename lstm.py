@@ -39,7 +39,7 @@ def build_model(tparams, options, maxw, training=True):
     xc1 = tensor.tensor3('xc1', dtype='int8')
     mask0 = tensor.tensor4('mask0', dtype=config.floatX)
     mask1 = tensor.tensor4('mask1', dtype=config.floatX)
-    y = tensor.matrix('y', dtype='float32')
+    y = tensor.matrix('y', dtype='int8')
     y_mask = tensor.matrix('y_mask', dtype='float32')
 
     n_batch = xc0.shape[2]
@@ -76,15 +76,16 @@ def build_model(tparams, options, maxw, training=True):
         proj20 = bidirectional_lstm_layer(tparams, proj20, options, name)
         proj21 = bidirectional_lstm_layer(tparams, proj21, options, name)
 
+    proj20 = proj20.mean(axis=0, keepdims=True)
+    proj21 = proj21.mean(axis=0, keepdims=True)
     tmp = tensor.concatenate([proj20, proj21], axis=2)
     pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
+#    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
     f_pred_prob = theano.function([xc0, xc1, mask0, mask1, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
     f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
     def cost_scan_i(i, j, free_var):
-        print(n_batch)
-        print(j)
         return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
 
     cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
@@ -115,7 +116,7 @@ def split_at(src, prop):
 
 def train_lstm(
     dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
-    patience=1,  # Number of epoch to wait before early stop if no progress
+    patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
     decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
@@ -126,7 +127,7 @@ def train_lstm(
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=8,  # The batch size during training.
+    batch_size=32,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 
@@ -174,7 +175,7 @@ def train_lstm(
     max_length = max(max_word_length, get_max_length(input_path))
 
     #print numpy.max(train[2])
-    ydim = 50
+    ydim = 3
     print "ydim =", ydim
 
     model_options['ydim'] = ydim

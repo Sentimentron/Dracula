@@ -54,7 +54,7 @@ def generate_init_params(options, params):
         params = param_init_bidirection_lstm(options, params, prefix=name, proj=lstm_proj)
 
     # classifier
-    params['U'] = 0.01 * numpy.random.randn(lstm_proj,
+    params['U'] = 0.01 * numpy.random.randn(lstm_proj*2,
                                             options['ydim']).astype(config.floatX)
     params['b'] = numpy.zeros((options['ydim'],)).astype(config.floatX)
 
