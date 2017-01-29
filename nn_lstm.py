@@ -33,13 +33,16 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1, go
 
     def _step(x_, h_, c_):
 
-        preact = tensor.dot(h_, tparams[_p(prefix, 'U')])
+        U = tparams[_p(prefix, 'U')]
+#        h_ = theano.printing.Print("h_", attrs=["shape"])(h_)
+#        U = theano.printing.Print("U_", attrs=["shape"])(U)
+        preact = tensor.dot(h_, U)
         preact += x_
 
-        i = tensor.nnet.sigmoid(_slice(preact, 0, options['dim_proj']*mult))
-        f = tensor.nnet.sigmoid(_slice(preact, 1, options['dim_proj']*mult))
-        o = tensor.nnet.sigmoid(_slice(preact, 2, options['dim_proj']*mult))
-        c = tensor.tanh(_slice(preact, 3, options['dim_proj']*mult))
+        i = tensor.nnet.sigmoid(_slice(preact, 0, options['lstm_proj']*mult))
+        f = tensor.nnet.sigmoid(_slice(preact, 1, options['lstm_proj']*mult))
+        o = tensor.nnet.sigmoid(_slice(preact, 2, options['lstm_proj']*mult))
+        c = tensor.tanh(_slice(preact, 3, options['lstm_proj']*mult))
 
         c = f * c_ + i * c
 
@@ -47,18 +50,23 @@ def lstm_unmasked_layer(tparams, state_below, options, prefix='lstm', mult=1, go
 
         return h, c
 
-    state_below = (tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
-                   tparams[_p(prefix, 'b')])
+ #   state_below = theano.printing.Print("state_below", attrs=["shape"])(state_below)
+    W = tparams[_p(prefix, 'W')]
+    b = tparams[_p(prefix, 'b')]
 
-    dim_proj = options['dim_proj']*mult
+#    W = theano.printing.Print("W", attrs=["shape"])(W)
+#    b = theano.printing.Print("W", attrs=["shape"])(b)
+    state_below = tensor.dot(state_below, W) + b
+
+    lstm_proj = options['lstm_proj']*mult
     rval, updates = theano.scan(_step,
                                 sequences=[state_below],
                                 outputs_info=[tensor.cast(tensor.alloc(numpy_floatX(0.),
                                                            n_samples,
-                                                           dim_proj), theano.config.floatX),
+                                                           lstm_proj), theano.config.floatX),
                                               tensor.cast(tensor.alloc(numpy_floatX(0.),
                                                            n_samples,
-                                                           dim_proj), theano.config.floatX)],
+                                                           lstm_proj), theano.config.floatX)],
                                 name=_p(prefix, '_layers'),
                                 n_steps=nsteps,
                                 go_backwards=go_backwards)
@@ -96,10 +104,10 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, go_backw
         preact = tensor.dot(h_, tparams[_p(prefix, 'U')])
         preact += x_
 
-        i = tensor.nnet.sigmoid(_slice(preact, 0, options['dim_proj']))
-        f = tensor.nnet.sigmoid(_slice(preact, 1, options['dim_proj']))
-        o = tensor.nnet.sigmoid(_slice(preact, 2, options['dim_proj']))
-        c = tensor.tanh(_slice(preact, 3, options['dim_proj']))
+        i = tensor.nnet.sigmoid(_slice(preact, 0, options['lstm_proj']))
+        f = tensor.nnet.sigmoid(_slice(preact, 1, options['lstm_proj']))
+        o = tensor.nnet.sigmoid(_slice(preact, 2, options['lstm_proj']))
+        c = tensor.tanh(_slice(preact, 3, options['lstm_proj']))
 
         c = f * c_ + i * c
         c = m_[:, None] * c + (1. - m_)[:, None] * c_
@@ -112,15 +120,15 @@ def lstm_layer(tparams, state_below, options, prefix='lstm', mask=None, go_backw
     state_below = (tensor.dot(state_below, tparams[_p(prefix, 'W')]) +
                    tparams[_p(prefix, 'b')])
 
-    dim_proj = options['dim_proj'] * mult
+    lstm_proj = options['lstm_proj'] * mult
     rval, updates = theano.scan(_step,
                                 sequences=[mask, state_below],
                                 outputs_info=[tensor.alloc(numpy_floatX(0.),
                                                            n_samples,
-                                                           dim_proj),
+                                                           lstm_proj),
                                               tensor.alloc(numpy_floatX(0.),
                                                            n_samples,
-                                                           dim_proj)],
+                                                           lstm_proj)],
                                 name=_p(prefix, '_layers'),
                                 n_steps=nsteps, go_backwards=go_backwards)
     return rval[0]

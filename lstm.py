@@ -35,10 +35,10 @@ SEED = 123
 numpy.random.seed(SEED)
 
 def build_model(tparams, options, maxw, training=True):
-    xc0 = tensor.tensor3('xc', dtype='int8')
-    xc1 = tensor.tensor3('xc', dtype='int8')
-    mask0 = tensor.tensor4('mask', dtype=config.floatX)
-    mask1 = tensor.tensor4('mask', dtype=config.floatX)
+    xc0 = tensor.tensor3('xc0', dtype='int8')
+    xc1 = tensor.tensor3('xc1', dtype='int8')
+    mask0 = tensor.tensor4('mask0', dtype=config.floatX)
+    mask1 = tensor.tensor4('mask1', dtype=config.floatX)
     y = tensor.matrix('y', dtype='float32')
     y_mask = tensor.matrix('y_mask', dtype='float32')
 
@@ -54,100 +54,40 @@ def build_model(tparams, options, maxw, training=True):
     dist_mask1 = mask1
     dist1 = dist1 * dist_mask1
 
-    for i in range(options['letter_layers']):
-        name = 'lstm_chars_%d' % (i + 1,)
+    dist0 = dist0.dimshuffle(0, 2, 1, 3)
+    dist1 = dist1.dimshuffle(0, 2, 1, 3)
 
-        def _step(x_):
-            t = bidirectional_lstm_layer(tparams, x_, options, name)
-            return t
+    def _conv2d_step(x_):
+        p_ = tparams['conv']
+        x_ = x_.dimshuffle(0, 'x', 1, 2)
+        return tensor.nnet.conv2d(x_, p_, border_mode='valid')
 
-        dist0, updates = theano.scan(_step, sequences=[dist0], n_steps=dist0.shape[0])
-        dist1, updates = theano.scan(_step, sequences=[dist1], n_steps=dist1.shape[0])
+    dist0, updates0 = theano.scan(_conv2d_step, sequences=[dist0], n_steps=dist0.shape[0])
+    dist1, updates1 = theano.scan(_conv2d_step, sequences=[dist1], n_steps=dist0.shape[0])
 
-    dist0 = dist0.dimshuffle(1, 2, 0, 3)
-    dist1 = dist1.dimshuffle(1, 2, 0, 3)
-    dist_mask0 = tensor.cast(dist_mask0, theano.config.floatX)
-    dist_mask1 = tensor.cast(dist_mask1, theano.config.floatX)
-    dist_mask0 = dist_mask0.dimshuffle(1, 2, 0, 3)
-    dist_mask1 = dist_mask1.dimshuffle(1, 2, 0, 3)
-    divider0 = dist_mask0.sum(axis=0)
-    divider1 = dist_mask1.sum(axis=0)
-    divider0 += tensor.eq(divider0, numpy_floatX(0.0)) # Filter NaNs
-    divider1 += tensor.eq(divider1, numpy_floatX(0.0)) # Filter NaNs
+    dist0 = dist0.flatten(3)
+    dist1 = dist1.flatten(3)
 
-    dist0 = dist0 * dist_mask0
-    dist1 = dist1 * dist_mask1
-    tmp0 = tensor.cast(dist0.sum(axis=0), theano.config.floatX)
-    tmp1 = tensor.cast(dist1.sum(axis=0), theano.config.floatX)
-    tmp0 /= divider0
-    tmp1 /= divider1
-    proj20 = tmp0
-    proj21 = tmp1
+    proj20 = dist0
+    proj21 = dist1
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)
-        proj20 = bidirectional_lstm_layer(tparams, proj20, options, name, None, 1)
-        proj21 = bidirectional_lstm_layer(tparams, proj21, options, name, None, 1)
+        proj20 = bidirectional_lstm_layer(tparams, proj20, options, name)
+        proj21 = bidirectional_lstm_layer(tparams, proj21, options, name)
 
-    proj20 = proj20.dimshuffle(1, 0, 2)
-    proj21 = proj21.dimshuffle(1, 0, 2)
-    # dist structure is (word, character in word, mini-batch idx, all ones)
-    dist0 = dist0.dimshuffle(2, 1, 0, 3)
-    dist1 = dist1.dimshuffle(2, 1, 0, 3)
-    # now looking at (word, character in word, min-batch idx, [1])
-
-    word_mask_10 = dist0.max(axis=[3])
-    word_mask_11 = dist1.max(axis=[3])
-    word_mask_20 = word_mask_10.max(axis=[2], keepdims=True)
-    word_mask_21 = word_mask_11.max(axis=[2], keepdims=True)
-
-    proj20 = proj20 * word_mask_20
-    proj21 = proj21 * word_mask_21
-
-    # char mask is (word, character in word, min batch idx, 1)
-    # word_mask is (word, character in word, mini batch idx)
-    #word_mask = char_mask.max(axis=1, keepdims=True)
-    # word mask is (word, mini batch idx)
-    #
-    # should be (1, mini batch idx, 1
-    #word_char_count = dist.sum(axis=0)
-
-    # Dividing the output by the number of letters in the word?
-    tmp0 = proj20.sum(axis=0, keepdims=True)
-    tmp1 = proj21.sum(axis=0, keepdims=True)
-    divider0 = word_mask_10.sum(axis=[2], keepdims=True)
-    divider1 = word_mask_11.sum(axis=[2], keepdims=True)
-    divider0 += tensor.eq(divider0, numpy_floatX(0.0))
-    divider1 += tensor.eq(divider1, numpy_floatX(0.0))
-    tmp0 = tmp0 / divider0
-    tmp1 = tmp1 / divider1
-
-    tmp10 = tmp0.mean(axis=0, keepdims=True)
-    tmp11 = tmp1.mean(axis=0, keepdims=True)
-    tmp20 = tmp0.max(axis=0, keepdims=True)
-    tmp21 = tmp1.max(axis=0, keepdims=True)
-    tmp30 = tmp0.min(axis=0, keepdims=True)
-    tmp31 = tmp1.min(axis=0, keepdims=True)
-
-    tmp0 = tensor.concatenate([tmp10, tmp20, tmp30], axis=2)
-    tmp1 = tensor.concatenate([tmp11, tmp21, tmp31], axis=2)
-    #    diff = tensor.abs_(tmp0-tmp1)
-    diff = (tmp0-tmp1)**2
-    pred = diff.mean(axis=2, keepdims=True)
-    pred = pred.dimshuffle(0, 2, 1)
-    pred = sigmoid(5-pred)
-    #    pred = tensor.switch(pred < 1, pred, tensor.ones_like(pred))
-    #pred = pred.clip(0, 1)
+    tmp = tensor.concatenate([proj20, proj21], axis=2)
+    pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
 
     f_pred_prob = theano.function([xc0, xc1, mask0, mask1, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-#    f_pred = theano.function([xc, mask, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
-    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred > 0.5, name='f_pred', on_unused_input='ignore')
+    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
 
-    #    cost = (tensor.sqr(pred * y)).sum()
-    # st = tensor.sqr(((pred < 0.5) - y) * diff).mean()
-    #pred = theano.printing.Print("pred")(pred)
-    #cost = 1 - y*pred
-    cost = (y - pred)**2
+    def cost_scan_i(i, j, free_var):
+        print(n_batch)
+        print(j)
+        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
+
+    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
     cost = cost.mean()
 
     return xc0, xc1, mask0, mask1, y, y_mask, f_pred_prob, f_pred, cost
@@ -174,8 +114,8 @@ def split_at(src, prop):
     return (src_chars0, src_chars1, src_labels), (val_chars0, val_chars1, val_labels)
 
 def train_lstm(
-    dim_proj_chars=256,  # character embedding dimension and LSTM number of hidden units.
-    patience=40,  # Number of epoch to wait before early stop if no progress
+    dim_proj_chars=16,  # character embedding dimension and LSTM number of hidden units.
+    patience=1,  # Number of epoch to wait before early stop if no progress
     max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
     decay_c=0.0001,  # Weight decay for the classifier applied to the U weights.
@@ -186,7 +126,7 @@ def train_lstm(
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=32,  # The batch size during training.
+    batch_size=8,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 
@@ -234,11 +174,12 @@ def train_lstm(
     max_length = max(max_word_length, get_max_length(input_path))
 
     #print numpy.max(train[2])
-    ydim = 1
+    ydim = 50
     print "ydim =", ydim
 
     model_options['ydim'] = ydim
     model_options['n_chars'] = len(char_dict)+1
+    model_options['max_letters'] = max_word_length
 
     model_options['char_dict'] = char_dict
     model_options['pos_dict'] = pos_dict
@@ -257,6 +198,13 @@ def train_lstm(
     # use_noise is for dropout
     (xc0, xc1, mask0, mask1,
      y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
+
+    if decay_c > 0:
+        decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
+        weight_decay = 0
+        weight_decay += (tparams['U']**2).sum()
+        weight_decay *= decay_c
+        cost += weight_decay
 
     f_cost = theano.function([xc0, xc1, mask0, mask1, y, y_mask], cost, name='f_cost', on_unused_input='warn', mode=NanGuardMode(nan_is_error=True))
 

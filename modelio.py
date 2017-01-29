@@ -95,7 +95,7 @@ def load_data(path, chardict = {}, allow_append=True):
                     cur_chars.append(cidx)
                 buf.append(cur_chars)
             chars2.append(buf)
-            labels.append(float(dup))
+            labels.append([float(dup)])
     return chars1, chars2, labels
 
 

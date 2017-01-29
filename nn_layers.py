@@ -99,7 +99,7 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     :return: Softmax predictions
     """
     #avg_per_word = theano.printing.Print("avg_per_word")(avg_per_word)
-    if False:
+    if training:
         srng = RandomStreams(seed=12345)
         dropout_mask = tensor.cast(srng.binomial(size=U.shape, p=0.5), theano.config.floatX)
         #U = theano.printing.Print("U", attrs=["shape"])(U)
@@ -118,29 +118,6 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
     #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)
     pred = tensor.zeros_like(raw_pred)
     pred = tensor.inc_subtensor(pred[:, :, 0], 1)
-    pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
-
-    return pred
-
-def sigmoid_layer(avg_per_word, U, b, y_mask, maxw, training=False):
-    """
-    Produces the final labels in the [-1, 1] range via sigmoid
-    :param avg_per_word: Output from word-averaging
-    :param U: Classification weight matrix
-    :param b: Classification bias layer
-    :param y_mask: Because not all fragments are the same length, set y_mask to 0 in those positions
-                    where the output is undefined, causing this thing to output the special 0 label (for "don't care")
-    :return: Softmax predictions
-    """
-    raw_pred, _ = theano.scan(fn=lambda p, free_variable: tensor.tanh(tensor.dot(p, U) + b),
-                outputs_info=None,
-                sequences=[avg_per_word, tensor.arange(maxw)]
-            )
-
-    #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
-    #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)
-    pred = tensor.zeros_like(raw_pred)
-#    pred = tensor.inc_subtensor(pred[:, :, 0], 1)
     pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
 
     return pred
