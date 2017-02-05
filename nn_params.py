@@ -23,18 +23,17 @@ def init_params(options, reloaded=False):
 
     # Embedding setup
     options['dim_proj'] = options['dim_proj_chars']# + options['dim_proj_words']
+    # Use valid to compute the border, so it generates output of
+    # input_shape - filter_shape - 1
+    lstm_proj = 5 * (options['dim_proj'] - 5 + 1) * (options['max_letters'] - 5 + 1)
+    options['lstm_proj'] = int(lstm_proj)
     logging.debug("dim_proj = %d", options['dim_proj'])
 
-    nparams = generate_init_params(options, params)
-
     if not reloaded:
+        nparams = generate_init_params(options, params)
         return nparams
     else:
-        for k in nparams:
-            if k in options:
-                nparams[k] = options[k]
-        logging.debug("%s %s", options.keys(), nparams.keys())
-        return nparams
+        return options
 
 def generate_init_params(options, params):
 
@@ -44,10 +43,6 @@ def generate_init_params(options, params):
 
     # 5 x 5 2D convolution, done 5 times
     params['conv'] = 0.01 * numpy.random.randn(5, 1, 5, 5).astype(config.floatX)
-    # Use valid to compute the border, so it generates output of
-    # input_shape - filter_shape - 1
-    lstm_proj = 5 * (options['dim_proj'] - 5 + 1) * (options['max_letters'] - 5 + 1)
-    options['lstm_proj'] = int(lstm_proj)
 
     for i in range(options['word_layers']):
         name = 'lstm_words_%d' % (i + 1,)

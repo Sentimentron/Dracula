@@ -79,6 +79,7 @@ def build_model(tparams, options, maxw, training=True):
     proj20 = proj20.mean(axis=0, keepdims=True)
     proj21 = proj21.mean(axis=0, keepdims=True)
     tmp = tensor.concatenate([proj20, proj21], axis=2)
+#    tmp = proj20-proj21
     pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
 #    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
@@ -142,7 +143,8 @@ def train_lstm(
     char_dict = {},
     pos_dict = {},
     word_layers=0,
-    letter_layers=0
+    letter_layers=0,
+    evaluating=False # If true, compute train, test and valid accuracy only
 ):
 
     # Model options
@@ -198,7 +200,22 @@ def train_lstm(
 
     # use_noise is for dropout
     (xc0, xc1, mask0, mask1,
-     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count)
+     y, y_mask, f_pred_prob, f_pred, cost) = build_model(tparams, model_options, max_word_count, training=not evaluating)
+    kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
+    kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
+
+    logging.info("%d train examples" % len(train[0]))
+    logging.info("%d valid examples" % len(valid[0]))
+    logging.info("%d test examples" % len(test[0]))
+
+    if evaluating:
+        kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
+        valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
+        test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
+
+        logging.info("Valid %.4f, Test %.4f",
+                     100*(1-valid_err), 100*(1-test_err))
+        return
 
     if decay_c > 0:
         decay_c = theano.shared(numpy_floatX(decay_c), name='decay_c')
@@ -216,12 +233,6 @@ def train_lstm(
     f_grad_shared, f_update = optimizer(lr, tparams, grads,
                                         xc0, xc1, mask0, mask1, y, y_mask, cost)
 
-    kf_valid = get_minibatches_idx(len(valid[0]), valid_batch_size)
-    kf_test = get_minibatches_idx(len(test[0]), valid_batch_size)
-
-    logging.info("%d train examples" % len(train[0]))
-    logging.info("%d valid examples" % len(valid[0]))
-    logging.info("%d test examples" % len(test[0]))
 
     history_errs = []
     best_p = None
@@ -368,6 +379,7 @@ if __name__ == '__main__':
     a.add_argument("--pretrain", help="Divide a 90-10 training/eval thing", action="store_true")
     a.add_argument("--words", help="Number of recurrent layers (word level)", type=int, default=0)
     a.add_argument("--letters", help="Number of recurrent layers (letter level)", type=int, default=0)
+    a.add_argument("--evaluate", default=False, action='store_true')
 
     p = a.parse_args()
 
@@ -377,5 +389,6 @@ if __name__ == '__main__':
         reload_model=p.model,
         pretrain=p.pretrain,
         word_layers=p.words,
-        letter_layers=p.letters
+        letter_layers=p.letters,
+        evaluating=p.evaluate
     )
