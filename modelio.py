@@ -14,6 +14,22 @@ import tempfile
 from collections import defaultdict
 import unicodecsv as csv
 
+def nearest_power_of_two(of):
+    def find_nearest(array, value):
+        a = numpy.abs(array - value)
+        idx = a.argmin()
+        val = a[idx]
+        if val == a[idx+1]:
+            # If equidistant, tip the balance in favour of
+            # the larger power of two
+            return array[idx+1]
+        return array[idx]
+
+        idx = (numpy.abs(array - value)).argmin()
+        return array[idx]
+    pows_of_two = numpy.power(2, range(9))
+    return find_nearest(pows_of_two, of)
+
 def build_character_dictionary(path, chars = {}):
     with io.open(path, mode='r') as fin:
         filereader = csv.reader(fin, delimiter='\t')
@@ -43,6 +59,7 @@ def get_max_word_count(path):
     m = [len(t[c]) for c in t]
     m = int(numpy.percentile(m, 99))
     #m = int(numpy.median([len(t[c]) for c in t]))
+    m = nearest_power_of_two(m)
     logging.debug("get_max_word_count('%s') = %d", path, m)
     return m
 

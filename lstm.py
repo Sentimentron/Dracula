@@ -95,8 +95,8 @@ def build_model(tparams, options, maxw, training=True):
     return xc0, xc1, mask0, mask1, y, y_mask, f_pred_prob, f_pred, cost
 
 def split_at(src, prop):
+    # Everything's preshuffled in this model
     valid_indices = [i for i, _ in enumerate(zip(src[0], src[1]))]
-    random.shuffle(valid_indices)
     src_chars0, src_chars1, src_labels = [], [], []
     val_chars0, val_chars1, val_labels = [], [], []
     fin = max(int(prop * len(src[0])), 1)
@@ -174,6 +174,7 @@ def train_lstm(
     get_max_word_count(input_path))
     max_word_length = max(max_word_length, \
     get_max_word_length(input_path))
+    # This parameter is for information only
     max_length = max(max_word_length, get_max_length(input_path))
 
     #print numpy.max(train[2])
@@ -209,12 +210,20 @@ def train_lstm(
     logging.info("%d test examples" % len(test[0]))
 
     if evaluating:
+        input_path = "Data/quora_duplicate_questions_eval.tsv"
+        eval_data = load_data(input_path, char_dict)
+        kf_eval = get_minibatches_idx(len(eval_data[0]), valid_batch_size)
+
         kf_train_sorted = get_minibatches_idx(len(train[0]), batch_size)
         valid_err = pred_error(f_pred, prepare_data, valid, kf_valid, max_word_count, max_word_length, dim_proj_chars)
         test_err = pred_error(f_pred, prepare_data, test, kf_test, max_word_count, max_word_length, dim_proj_chars)
 
         logging.info("Valid %.4f, Test %.4f",
                      100*(1-valid_err), 100*(1-test_err))
+
+        guess_err = pred_error(f_pred, prepare_data, eval_data, kf_eval, max_word_count, max_word_length, dim_proj_chars)
+        logging.info("Guesstimate error: %.4f",
+                     100*(1-guess_err))
         return
 
     if decay_c > 0:
