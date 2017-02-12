@@ -39,8 +39,8 @@ def build_model(tparams, options, maxw, training=True):
     xc1 = tensor.tensor3('xc1', dtype='int8')
     mask0 = tensor.tensor4('mask0', dtype=config.floatX)
     mask1 = tensor.tensor4('mask1', dtype=config.floatX)
-    y = tensor.matrix('y', dtype='int8')
-    y_mask = tensor.matrix('y_mask', dtype='float32')
+    y = tensor.vector('y', dtype='int8')
+    y_mask = tensor.vector('y_mask', dtype='float32')
 
     n_batch = xc0.shape[2]
 
@@ -78,19 +78,30 @@ def build_model(tparams, options, maxw, training=True):
 
     proj20 = proj20.mean(axis=0, keepdims=True)
     proj21 = proj21.mean(axis=0, keepdims=True)
-    tmp = tensor.concatenate([proj20, proj21], axis=2)
+#   tmp = proj20-proj21
+    #tmp = tensor.concatenate([proj20, proj21], axis=2)
 #    tmp = proj20-proj21
-    pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
+#   pred = softmax_layer(tmp, tparams['U'], tparams['b'], y_mask, maxw, training)
 #    pred = theano.printing.Print("pred", attrs=["shape"])(pred)
 
+    def _sqr_mag(x):
+        return tensor.sqr(x).sum(axis=-1)
+
+    def _mag(x):
+        return tensor.sqrt(tensor.maximum(_sqr_mag(x), numpy.finfo(x.dtype).tiny))
+
+    def _cosine(x, y):
+        return tensor.clip((1 - (x * y).sum(axis=-1) / (_mag(x) * _mag(y)))/ 2, 0, 1)
+
+    pred30 = softmax_layer(proj20, tparams['U'], tparams['b'], y_mask, maxw, training)
+    pred31 = softmax_layer(proj21, tparams['U'], tparams['b'], y_mask, maxw, training)
+    pred = _cosine(pred30, pred31)
+
     f_pred_prob = theano.function([xc0, xc1, mask0, mask1, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred.argmax(axis=2), name='f_pred', on_unused_input='ignore')
+    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred > 0.5, name='f_pred', on_unused_input='ignore')
 
-    def cost_scan_i(i, j, free_var):
-        return -tensor.log(i[tensor.arange(n_batch), j] + 1e-8)
-
-    cost, _ = theano.scan(cost_scan_i, outputs_info=None, sequences=[pred, y, tensor.arange(n_batch)])
-    cost = cost.mean()
+    #cost = tensor.nnet.binary_crossentropy(pred, y).mean()
+    cost = tensor.sqr(pred - y).mean()
 
     return xc0, xc1, mask0, mask1, y, y_mask, f_pred_prob, f_pred, cost
 
@@ -178,7 +189,7 @@ def train_lstm(
     max_length = max(max_word_length, get_max_length(input_path))
 
     #print numpy.max(train[2])
-    ydim = 3
+    ydim = 128
     print "ydim =", ydim
 
     model_options['ydim'] = ydim

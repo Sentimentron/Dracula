@@ -52,8 +52,7 @@ def pred_error(f_pred, prepare_data, data, iterator, maxw, max_word_length, dim_
                                               numpy.array(data[2])[valid_index],
                                               maxw, max_word_length, dim_proj)
         preds = f_pred(xc0, xc1, mask0, mask1, y_mask)
-        preds = preds[numpy.nonzero(y)]
-        acc = numpy.equal(preds, y[numpy.nonzero(y)])
+        acc = numpy.equal(preds, y)
         valid_shapes.append(preds.size)
         valid_err.append(acc.sum())
 

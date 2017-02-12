@@ -113,11 +113,5 @@ def softmax_layer(avg_per_word, U, b, y_mask, maxw, training=False):
 				  outputs_info=None,
 				  sequences=[avg_per_word, tensor.arange(maxw)]
 				  )
+    return raw_pred
 
-    #raw_pred = theano.tensor.printing.Print("raw_pred")(raw_pred)
-    #y_mask = theano.tensor.printing.Print("y_mask")(y_mask)
-    pred = tensor.zeros_like(raw_pred)
-    pred = tensor.inc_subtensor(pred[:, :, 0], 1)
-    pred = tensor.set_subtensor(pred[y_mask.nonzero()], raw_pred[y_mask.nonzero()])
-
-    return pred
