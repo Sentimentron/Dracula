@@ -93,15 +93,22 @@ def build_model(tparams, options, maxw, training=True):
     def _cosine(x, y):
         return tensor.clip((1 - (x * y).sum(axis=-1) / (_mag(x) * _mag(y)))/ 2, 0, 1)
 
-    pred30 = softmax_layer(proj20, tparams['U'], tparams['b'], y_mask, maxw, training)
-    pred31 = softmax_layer(proj21, tparams['U'], tparams['b'], y_mask, maxw, training)
-    pred = _cosine(pred30, pred31)
+    pred30 = tensor.dot(proj20, tparams['U']) + tparams['b']
+    pred31 = tensor.dot(proj21, tparams['U']) + tparams['b']
+#    pred30 = softmax_layer(proj20, tparams['U'], tparams['b'], y_mask, maxw, training)
+#    pred31 = softmax_layer(proj21, tparams['U'], tparams['b'], y_mask, maxw, training)
+    #pred = _cosine(pred30, pred31)
+    pred = _mag(pred30 - pred31)
+    dpred = pred > 0.5
+    #pred = tensor.nnet.sigmoid(pred)
 
     f_pred_prob = theano.function([xc0, xc1, mask0, mask1, y_mask], pred, name='f_pred_prob', on_unused_input='ignore')
-    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], pred > 0.5, name='f_pred', on_unused_input='ignore')
+    f_pred = theano.function([xc0, xc1, mask0, mask1, y_mask], dpred, name='f_pred', on_unused_input='ignore')
 
-    #cost = tensor.nnet.binary_crossentropy(pred, y).mean()
-    cost = tensor.sqr(pred - y).mean()
+    #cost = tensor.nnet.binary_crossentropy(y, 1 - tensor.nnet.sigmoid(pred)).mean()
+    #cost = tensor.sqr(pred * y * 0.9 + pred * (1 - y) * 0.1).mean()
+    #cost = (tensor.sqr(dpred - y) * pred).mean()
+    cost = (tensor.sqr(y - pred)).mean()
 
     return xc0, xc1, mask0, mask1, y, y_mask, f_pred_prob, f_pred, cost
 
@@ -127,7 +134,7 @@ def split_at(src, prop):
     return (src_chars0, src_chars1, src_labels), (val_chars0, val_chars1, val_labels)
 
 def train_lstm(
-    dim_proj_chars=64,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=8,  # character embedding dimension and LSTM number of hidden units.
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
@@ -139,7 +146,7 @@ def train_lstm(
     validFreq=900,  # Compute the validation error after this number of update.
     saveFreq=2220,  # Save the parameters after every saveFreq updates
     maxlen=100,  # Sequence longer then this get ignored
-    batch_size=32,  # The batch size during training.
+    batch_size=8,  # The batch size during training.
     valid_batch_size=64,  # The batch size used for validation/test set.
     dataset='imdb',
 

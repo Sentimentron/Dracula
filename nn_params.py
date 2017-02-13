@@ -39,7 +39,7 @@ def generate_init_params(options, params):
 
     randn = numpy.random.rand(options['n_chars'],
                               options['dim_proj_chars'])*2 - 1
-    params['Cemb'] = (0.01 * randn).astype(config.floatX)
+    params['Cemb'] = (1 * randn).astype(config.floatX)
 
     # 5 x 5 2D convolution, done 5 times
     params['conv'] = 0.01 * numpy.random.randn(5, 1, 5, 5).astype(config.floatX)

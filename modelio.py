@@ -115,7 +115,7 @@ def load_data(path, chardict = {}, allow_append=True):
             if dup == "0":
                 labels.append(1)
             elif dup == "1":
-                labels.append(2)
+                labels.append(0)
     return chars1, chars2, labels
 
 
