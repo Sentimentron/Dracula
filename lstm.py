@@ -134,7 +134,7 @@ def split_at(src, prop):
     return (src_chars0, src_chars1, src_labels), (val_chars0, val_chars1, val_labels)
 
 def train_lstm(
-    dim_proj_chars=8,  # character embedding dimension and LSTM number of hidden units.
+    dim_proj_chars=64,  # character embedding dimension and LSTM number of hidden units.
     patience=10,  # Number of epoch to wait before early stop if no progress
     max_epochs=8,  # The maximum number of epoch to run
     dispFreq=10,  # Display to stdout the training progress every N updates
