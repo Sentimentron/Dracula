@@ -12,3 +12,7 @@ You'll need Theano 0.7 or better. [See Theano's installation page for additional
 
     python lstm.py --words 1 --model lstm_model.npz --evaluate
     
+## Training
+You'll need to run `preprocess.py` in `Data/`, and pipe the output to `quora_duplicate_questions_stripped.tsv` (also in `Data`) before training with
+
+    python lstm.py --words 1
